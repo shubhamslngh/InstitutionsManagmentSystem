@@ -122,7 +122,7 @@ export default async function HomePage() {
               <tbody>
                 {snapshot.recentInvoices.map((invoice) => (
                   <tr key={invoice.id}>
-                    <td>{invoice.first_name} {invoice.last_name}</td>
+                    <td>{invoice.first_name} {invoice.last_name || ""}</td>
                     <td>{invoice.institution_name}</td>
                     <td>{invoice.title}</td>
                     <td><span className="badge">{invoice.status}</span></td>

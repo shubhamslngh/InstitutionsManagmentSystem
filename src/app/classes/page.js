@@ -1,5 +1,4 @@
 import AppShell from "../../components/AppShell.js";
-import Link from "next/link";
 import ClassManager from "../../components/ClassManager.js";
 import { ensureSchema } from "../../db/ensureSchema.js";
 import { listClasses } from "../../services/classService.js";

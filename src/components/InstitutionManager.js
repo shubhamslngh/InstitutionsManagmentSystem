@@ -101,9 +101,30 @@ export default function InstitutionManager({ initialInstitutions = [], initialEr
       .toLowerCase()
       .includes(searchTerm.toLowerCase())
   );
+  const schoolCount = institutions.filter((institution) => institution.type === "SCHOOL").length;
+  const collegeCount = institutions.filter((institution) => institution.type === "COLLEGE").length;
 
   return (
     <div className="stack-lg">
+      <section className="summary-grid">
+        <article className="summary-card">
+          <span className="summary-label">Total Campuses</span>
+          <strong className="summary-value">{institutions.length}</strong>
+        </article>
+        <article className="summary-card">
+          <span className="summary-label">Schools</span>
+          <strong className="summary-value">{schoolCount}</strong>
+        </article>
+        <article className="summary-card">
+          <span className="summary-label">Colleges</span>
+          <strong className="summary-value">{collegeCount}</strong>
+        </article>
+        <article className="summary-card">
+          <span className="summary-label">Filtered View</span>
+          <strong className="summary-value">{filteredInstitutions.length}</strong>
+        </article>
+      </section>
+
       <section className="panel">
         <div className="page-head">
           <span className="eyebrow">New Institution</span>

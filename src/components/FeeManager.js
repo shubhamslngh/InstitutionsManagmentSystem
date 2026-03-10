@@ -359,6 +359,8 @@ export default function FeeManager({
     const matchesStudent = studentFilter === "ALL" || payment.studentId === studentFilter;
     return matchesInstitution && matchesStudent;
   });
+  const totalCollections = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const totalOutstanding = invoices.reduce((sum, invoice) => sum + Number(invoice.balance || 0), 0);
 
   useEffect(() => {
     if (!ledgerFilters.institutionId) {
@@ -451,6 +453,25 @@ export default function FeeManager({
 
   return (
     <div className="stack-lg">
+      <section className="summary-grid">
+        <article className="summary-card">
+          <span className="summary-label">Fee Structures</span>
+          <strong className="summary-value">{structures.length}</strong>
+        </article>
+        <article className="summary-card">
+          <span className="summary-label">Active Invoices</span>
+          <strong className="summary-value">{invoices.length}</strong>
+        </article>
+        <article className="summary-card">
+          <span className="summary-label">Collections</span>
+          <strong className="summary-value">{totalCollections.toLocaleString()}</strong>
+        </article>
+        <article className="summary-card">
+          <span className="summary-label">Outstanding</span>
+          <strong className="summary-value">{totalOutstanding.toLocaleString()}</strong>
+        </article>
+      </section>
+
       <section className="panel">
         <div className="page-head">
           <span className="eyebrow">Fee Setup</span>

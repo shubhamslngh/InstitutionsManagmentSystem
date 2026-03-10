@@ -13,6 +13,8 @@
   --sidebar-line: rgba(255, 255, 255, 0.08);
   --sidebar-text: #d8e2f0;
   --sidebar-muted: #91a0b8;
+  --font-body: "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Aptos Display", "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
 }
 
 * {
@@ -21,6 +23,7 @@
 
 html {
   font-family: var(--font-body), sans-serif;
+  scroll-behavior: smooth;
 }
 
 body {
@@ -53,6 +56,9 @@ a {
   display: grid;
   gap: 28px;
   align-content: start;
+  position: sticky;
+  top: 0;
+  min-height: 100vh;
 }
 
 .sidebar-brand {
@@ -89,6 +95,12 @@ a {
   border-radius: 16px;
   color: var(--sidebar-text);
   border: 1px solid transparent;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.sidebar-link:hover {
+  transform: translateX(2px);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .sidebar-link-active {
@@ -169,6 +181,13 @@ a {
   color: var(--text);
   cursor: pointer;
   font-weight: 700;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.nav a:hover,
+.button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
 }
 
 .hero {
@@ -233,6 +252,38 @@ a {
 
 .page-grid {
   grid-template-columns: 1.1fr 0.9fr;
+}
+
+.summary-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.summary-card {
+  padding: 18px 20px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 255, 0.94)),
+    var(--surface);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 8px;
+}
+
+.summary-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.summary-value {
+  font-family: var(--font-display), sans-serif;
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1;
 }
 
 .stack-sm {
@@ -317,6 +368,17 @@ a {
   background: rgba(255, 255, 255, 0.72);
   color: var(--text);
   font: inherit;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.filter-input:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: rgba(11, 110, 153, 0.45);
+  box-shadow: 0 0 0 4px rgba(11, 110, 153, 0.12);
+  background: #fff;
 }
 
 .field input:disabled,
@@ -359,6 +421,12 @@ a {
   border-collapse: collapse;
 }
 
+.table thead th {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .ledger-wrap {
   overflow-x: auto;
 }
@@ -390,6 +458,7 @@ a {
   text-align: left;
   padding: 12px 0;
   border-bottom: 1px solid var(--line);
+  vertical-align: middle;
 }
 
 .badge {
@@ -438,8 +507,14 @@ a {
 
   .hero-grid,
   .page-grid,
+  .summary-grid,
   .two-col,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    min-height: auto;
   }
 }

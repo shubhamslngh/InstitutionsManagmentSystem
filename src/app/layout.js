@@ -1,15 +1,4 @@
-import { Bricolage_Grotesque, Manrope } from "next/font/google";
 import "./globals.css";
-
-const bodyFont = Manrope({
-  subsets: ["latin"],
-  variable: "--font-body"
-});
-
-const displayFont = Bricolage_Grotesque({
-  subsets: ["latin"],
-  variable: "--font-display"
-});
 
 export const metadata = {
   title: "Maurya School Management",
@@ -19,7 +8,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className={`${bodyFont.variable} ${displayFont.variable}`}>{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

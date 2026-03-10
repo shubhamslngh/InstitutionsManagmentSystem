@@ -131,9 +131,29 @@ export default function StudentManager({
       .includes(searchTerm.toLowerCase());
     return matchesInstitution && matchesSearch;
   });
+  const assignedToClassCount = students.filter((student) => student.classId || student.className).length;
 
   return (
     <div className="stack-lg">
+      <section className="summary-grid">
+        <article className="summary-card">
+          <span className="summary-label">Total Students</span>
+          <strong className="summary-value">{students.length}</strong>
+        </article>
+        <article className="summary-card">
+          <span className="summary-label">Class Assigned</span>
+          <strong className="summary-value">{assignedToClassCount}</strong>
+        </article>
+        <article className="summary-card">
+          <span className="summary-label">Institutions</span>
+          <strong className="summary-value">{institutions.length}</strong>
+        </article>
+        <article className="summary-card">
+          <span className="summary-label">Filtered View</span>
+          <strong className="summary-value">{filteredStudents.length}</strong>
+        </article>
+      </section>
+
       <section className="panel">
         <div className="page-head">
           <span className="eyebrow">Admissions</span>

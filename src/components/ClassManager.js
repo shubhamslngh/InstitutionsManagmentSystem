@@ -105,9 +105,29 @@ export default function ClassManager({
   const filteredClasses = classes.filter((item) =>
     institutionFilter === "ALL" ? true : item.institutionId === institutionFilter
   );
+  const totalCapacity = classes.reduce((sum, item) => sum + Number(item.capacity || 0), 0);
 
   return (
     <div className="stack-lg">
+      <section className="summary-grid">
+        <article className="summary-card">
+          <span className="summary-label">Total Classes</span>
+          <strong className="summary-value">{classes.length}</strong>
+        </article>
+        <article className="summary-card">
+          <span className="summary-label">Institutions</span>
+          <strong className="summary-value">{institutions.length}</strong>
+        </article>
+        <article className="summary-card">
+          <span className="summary-label">Seat Capacity</span>
+          <strong className="summary-value">{totalCapacity}</strong>
+        </article>
+        <article className="summary-card">
+          <span className="summary-label">Filtered View</span>
+          <strong className="summary-value">{filteredClasses.length}</strong>
+        </article>
+      </section>
+
       <section className="panel">
         <div className="page-head">
           <span className="eyebrow">Class Desk</span>
