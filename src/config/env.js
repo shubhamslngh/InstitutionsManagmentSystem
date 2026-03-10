@@ -39,7 +39,7 @@ function buildDatabaseUrl() {
     return "mysql://root:your_password@localhost:3306/mauryaschool";
   }
 
-  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${name}`;
+  return `mysql://root:Maurya@851@localhost:3306/mauryaschool`;
 }
 
 export const env = {
