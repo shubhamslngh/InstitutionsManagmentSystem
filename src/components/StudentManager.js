@@ -22,9 +22,7 @@ const initialForm = {
   address: "",
   dob: "",
   course: "",
-  classId: "",
-  className: "",
-  section: ""
+  classId: ""
 };
 
 export default function StudentManager({
@@ -103,9 +101,7 @@ export default function StudentManager({
       address: student.address || "",
       dob: student.dob ? String(student.dob).slice(0, 10) : "",
       course: student.course || "",
-      classId: student.classId || "",
-      className: student.className || "",
-      section: student.section || ""
+      classId: student.classId || ""
     });
   }
 
@@ -242,14 +238,6 @@ export default function StudentManager({
                   </option>
                 ))}
               </Select>
-            </label>
-            <label className="field">
-              <span>Class Label</span>
-              <Input name="className" value={form.className} onChange={updateField} />
-            </label>
-            <label className="field">
-              <span>Section</span>
-              <Input name="section" value={form.section} onChange={updateField} />
             </label>
             <div className="form-actions">
               <Button disabled={isSubmitting} type="submit">

@@ -13,17 +13,19 @@ async function assertInstitutionExists(institutionId) {
 
 async function assertClassBelongsToInstitution(classId, institutionId) {
   if (!classId) {
-    return;
+    return null;
   }
 
   const result = await query(
-    "SELECT id FROM academic_classes WHERE id = $1 AND institution_id = $2",
+    "SELECT id, name, section FROM academic_classes WHERE id = $1 AND institution_id = $2",
     [classId, institutionId]
   );
 
   if (result.rowCount === 0) {
     throw createHttpError(404, "Class not found for this institution.");
   }
+
+  return toCamelCaseRow(result.rows[0]);
 }
 
 export async function listStudents(filters = {}) {
@@ -55,7 +57,7 @@ export async function getStudentById(studentId) {
 export async function createStudent(payload) {
   requireFields(payload, ["institutionId", "firstName", "admissionNumber"]);
   await assertInstitutionExists(payload.institutionId);
-  await assertClassBelongsToInstitution(payload.classId, payload.institutionId);
+  const academicClass = await assertClassBelongsToInstitution(payload.classId, payload.institutionId);
   const studentId = newId();
 
   try {
@@ -80,7 +82,7 @@ export async function createStudent(payload) {
           section,
           status
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       `,
       [
         studentId,
@@ -96,9 +98,9 @@ export async function createStudent(payload) {
         payload.address?.trim() || null,
         payload.dob || null,
         payload.course?.trim() || null,
-        payload.className?.trim() || null,
+        academicClass?.name || null,
         payload.classId || null,
-        payload.section?.trim() || null,
+        academicClass?.section || null,
         payload.status?.trim() || "ACTIVE"
       ]
     );
@@ -117,7 +119,7 @@ export async function updateStudent(studentId, payload) {
   const nextInstitutionId = payload.institutionId ?? currentStudent.institutionId;
   await assertInstitutionExists(nextInstitutionId);
   const nextClassId = payload.classId !== undefined ? payload.classId || null : currentStudent.classId;
-  await assertClassBelongsToInstitution(nextClassId, nextInstitutionId);
+  const academicClass = await assertClassBelongsToInstitution(nextClassId, nextInstitutionId);
 
   try {
     await query(
@@ -157,9 +159,9 @@ export async function updateStudent(studentId, payload) {
         payload.address?.trim() ?? currentStudent.address,
         payload.dob !== undefined ? payload.dob || null : currentStudent.dob,
         payload.course?.trim() ?? currentStudent.course,
-        payload.className?.trim() ?? currentStudent.className,
+        nextClassId ? academicClass?.name || null : null,
         nextClassId,
-        payload.section?.trim() ?? currentStudent.section,
+        nextClassId ? academicClass?.section || null : null,
         payload.status?.trim() ?? currentStudent.status
       ]
     );
