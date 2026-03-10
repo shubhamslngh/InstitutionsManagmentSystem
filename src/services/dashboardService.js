@@ -9,13 +9,13 @@ export async function getDashboardSnapshot() {
     outstandingResult,
     recentInvoicesResult
   ] = await Promise.all([
-    query("SELECT COUNT(*)::int AS count FROM institutions"),
-    query("SELECT COUNT(*)::int AS count FROM students"),
-    query("SELECT COUNT(*)::int AS count FROM fee_invoices"),
-    query("SELECT COALESCE(SUM(amount), 0)::float AS total FROM fee_payments"),
+    query("SELECT COUNT(*) AS count FROM institutions"),
+    query("SELECT COUNT(*) AS count FROM students"),
+    query("SELECT COUNT(*) AS count FROM fee_invoices"),
+    query("SELECT COALESCE(SUM(amount), 0) AS total FROM fee_payments"),
     query(
       `
-        SELECT COALESCE(SUM(balance), 0)::float AS total
+        SELECT COALESCE(SUM(balance), 0) AS total
         FROM (
           SELECT fi.net_amount - COALESCE(SUM(fp.amount), 0) AS balance
           FROM fee_invoices fi
@@ -29,7 +29,7 @@ export async function getDashboardSnapshot() {
         SELECT
           fi.id,
           fi.title,
-          fi.net_amount::float AS net_amount,
+          fi.net_amount AS net_amount,
           fi.status,
           s.first_name,
           s.last_name,
@@ -45,11 +45,11 @@ export async function getDashboardSnapshot() {
 
   return {
     totals: {
-      institutions: institutionsResult.rows[0].count,
-      students: studentsResult.rows[0].count,
-      invoices: invoicesResult.rows[0].count,
-      collections: paymentsResult.rows[0].total,
-      outstanding: outstandingResult.rows[0].total
+      institutions: Number(institutionsResult.rows[0].count),
+      students: Number(studentsResult.rows[0].count),
+      invoices: Number(invoicesResult.rows[0].count),
+      collections: Number(paymentsResult.rows[0].total),
+      outstanding: Number(outstandingResult.rows[0].total)
     },
     recentInvoices: recentInvoicesResult.rows
   };

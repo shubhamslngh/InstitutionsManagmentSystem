@@ -1,4 +1,5 @@
 import { query } from "../db/index.js";
+import { newId } from "../db/ids.js";
 import { createHttpError } from "../utils/httpError.js";
 import { requireFields } from "../utils/validators.js";
 import { mapRows, toCamelCaseRow } from "../utils/mappers.js";
@@ -55,11 +56,13 @@ export async function createStudent(payload) {
   requireFields(payload, ["institutionId", "firstName", "admissionNumber"]);
   await assertInstitutionExists(payload.institutionId);
   await assertClassBelongsToInstitution(payload.classId, payload.institutionId);
+  const studentId = newId();
 
   try {
-    const result = await query(
+    await query(
       `
         INSERT INTO students (
+          id,
           institution_id,
           admission_number,
           first_name,
@@ -77,10 +80,10 @@ export async function createStudent(payload) {
           section,
           status
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-        RETURNING *
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       `,
       [
+        studentId,
         payload.institutionId,
         payload.admissionNumber.trim(),
         payload.firstName.trim(),
@@ -100,9 +103,9 @@ export async function createStudent(payload) {
       ]
     );
 
-    return toCamelCaseRow(result.rows[0]);
+    return getStudentById(studentId);
   } catch (error) {
-    if (error.code === "23505") {
+    if (error.code === "ER_DUP_ENTRY") {
       throw createHttpError(409, "Admission number already exists for this institution.");
     }
     throw error;
@@ -117,7 +120,7 @@ export async function updateStudent(studentId, payload) {
   await assertClassBelongsToInstitution(nextClassId, nextInstitutionId);
 
   try {
-    const result = await query(
+    await query(
       `
         UPDATE students
         SET
@@ -137,9 +140,8 @@ export async function updateStudent(studentId, payload) {
           class_id = $15,
           section = $16,
           status = $17,
-          updated_at = NOW()
+          updated_at = CURRENT_TIMESTAMP
         WHERE id = $1
-        RETURNING *
       `,
       [
         studentId,
@@ -162,9 +164,9 @@ export async function updateStudent(studentId, payload) {
       ]
     );
 
-    return toCamelCaseRow(result.rows[0]);
+    return getStudentById(studentId);
   } catch (error) {
-    if (error.code === "23505") {
+    if (error.code === "ER_DUP_ENTRY") {
       throw createHttpError(409, "Admission number already exists for this institution.");
     }
     throw error;

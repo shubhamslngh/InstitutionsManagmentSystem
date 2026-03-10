@@ -1,4 +1,5 @@
 import { query } from "../db/index.js";
+import { newId } from "../db/ids.js";
 import { createHttpError } from "../utils/httpError.js";
 import { requireFields } from "../utils/validators.js";
 import { mapRows, toCamelCaseRow } from "../utils/mappers.js";
@@ -55,21 +56,23 @@ export async function getClassById(classId) {
 export async function createClass(payload) {
   requireFields(payload, ["institutionId", "name"]);
   await assertInstitutionExists(payload.institutionId);
+  const classId = newId();
 
   try {
-    const result = await query(
+    await query(
       `
         INSERT INTO academic_classes (
+          id,
           institution_id,
           name,
           section,
           academic_year,
           capacity
         )
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING *
+        VALUES ($1, $2, $3, $4, $5, $6)
       `,
       [
+        classId,
         payload.institutionId,
         payload.name.trim(),
         payload.section?.trim() || null,
@@ -78,9 +81,9 @@ export async function createClass(payload) {
       ]
     );
 
-    return toCamelCaseRow(result.rows[0]);
+    return getClassById(classId);
   } catch (error) {
-    if (error.code === "23505") {
+    if (error.code === "ER_DUP_ENTRY") {
       throw createHttpError(409, "This class already exists for the institution.");
     }
     throw error;
@@ -93,7 +96,7 @@ export async function updateClass(classId, payload) {
   await assertInstitutionExists(institutionId);
 
   try {
-    const result = await query(
+    await query(
       `
         UPDATE academic_classes
         SET
@@ -102,9 +105,8 @@ export async function updateClass(classId, payload) {
           section = $4,
           academic_year = $5,
           capacity = $6,
-          updated_at = NOW()
+          updated_at = CURRENT_TIMESTAMP
         WHERE id = $1
-        RETURNING *
       `,
       [
         classId,
@@ -116,9 +118,9 @@ export async function updateClass(classId, payload) {
       ]
     );
 
-    return toCamelCaseRow(result.rows[0]);
+    return getClassById(classId);
   } catch (error) {
-    if (error.code === "23505") {
+    if (error.code === "ER_DUP_ENTRY") {
       throw createHttpError(409, "This class already exists for the institution.");
     }
     throw error;

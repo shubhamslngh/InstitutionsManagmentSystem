@@ -1,4 +1,5 @@
 import { query, withTransaction } from "../db/index.js";
+import { newId } from "../db/ids.js";
 import { createHttpError } from "../utils/httpError.js";
 import { requireFields, requirePositiveAmount } from "../utils/validators.js";
 import { mapRows, toCamelCaseRow } from "../utils/mappers.js";
@@ -34,12 +35,15 @@ async function getFeeInvoiceById(feeInvoiceId, client = { query }) {
     `
       SELECT
         fi.*,
-        COALESCE(SUM(fp.amount), 0) AS total_paid,
-        fi.net_amount - COALESCE(SUM(fp.amount), 0) AS balance
+        COALESCE(payments.total_paid, 0) AS total_paid,
+        fi.net_amount - COALESCE(payments.total_paid, 0) AS balance
       FROM fee_invoices fi
-      LEFT JOIN fee_payments fp ON fp.fee_invoice_id = fi.id
+      LEFT JOIN (
+        SELECT fee_invoice_id, SUM(amount) AS total_paid
+        FROM fee_payments
+        GROUP BY fee_invoice_id
+      ) payments ON payments.fee_invoice_id = fi.id
       WHERE fi.id = $1
-      GROUP BY fi.id
     `,
     [feeInvoiceId]
   );
@@ -63,6 +67,7 @@ async function getFeeInvoiceById(feeInvoiceId, client = { query }) {
 export async function createFeeStructure(payload) {
   requireFields(payload, ["institutionId", "name", "amount"]);
   requirePositiveAmount(payload.amount, "amount");
+  const feeStructureId = newId();
 
   const institutionResult = await query("SELECT id FROM institutions WHERE id = $1", [
     payload.institutionId
@@ -83,9 +88,10 @@ export async function createFeeStructure(payload) {
     }
   }
 
-  const result = await query(
+  await query(
     `
       INSERT INTO fee_structures (
+        id,
         institution_id,
         class_id,
         name,
@@ -96,10 +102,10 @@ export async function createFeeStructure(payload) {
         is_active,
         notes
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING *
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `,
     [
+      feeStructureId,
       payload.institutionId,
       payload.classId || null,
       payload.name.trim(),
@@ -112,7 +118,7 @@ export async function createFeeStructure(payload) {
     ]
   );
 
-  return toCamelCaseRow(result.rows[0]);
+  return getFeeStructureById(feeStructureId);
 }
 
 export async function listFeeStructures(filters = {}) {
@@ -167,7 +173,7 @@ export async function updateFeeStructure(feeStructureId, payload) {
     }
   }
 
-  const result = await query(
+  await query(
     `
       UPDATE fee_structures
       SET
@@ -180,9 +186,8 @@ export async function updateFeeStructure(feeStructureId, payload) {
         due_day_of_month = $8,
         is_active = $9,
         notes = $10,
-        updated_at = NOW()
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
-      RETURNING *
     `,
     [
       feeStructureId,
@@ -200,7 +205,7 @@ export async function updateFeeStructure(feeStructureId, payload) {
     ]
   );
 
-  return toCamelCaseRow(result.rows[0]);
+  return getFeeStructureById(feeStructureId);
 }
 
 export async function deleteFeeStructure(feeStructureId) {
@@ -211,6 +216,7 @@ export async function deleteFeeStructure(feeStructureId) {
 async function createFeeInvoiceWithClient(payload, client) {
   requireFields(payload, ["studentId", "title", "grossAmount"]);
   requirePositiveAmount(payload.grossAmount, "grossAmount");
+  const feeInvoiceId = newId();
 
   const discountAmount = Number(payload.discountAmount || 0);
   if (discountAmount < 0) {
@@ -224,9 +230,10 @@ async function createFeeInvoiceWithClient(payload, client) {
     throw createHttpError(400, "Net amount must be greater than zero.");
   }
 
-  const result = await client.query(
+  await client.query(
     `
       INSERT INTO fee_invoices (
+        id,
         institution_id,
         student_id,
         fee_structure_id,
@@ -238,10 +245,10 @@ async function createFeeInvoiceWithClient(payload, client) {
         status,
         notes
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'PENDING', $9)
-      RETURNING *
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING', $10)
     `,
     [
+      feeInvoiceId,
       student.institutionId,
       student.id,
       payload.feeStructureId || null,
@@ -254,7 +261,7 @@ async function createFeeInvoiceWithClient(payload, client) {
     ]
   );
 
-  return getFeeInvoiceById(result.rows[0].id, client);
+  return getFeeInvoiceById(feeInvoiceId, client);
 }
 
 export async function updateFeeInvoice(feeInvoiceId, payload) {
@@ -292,7 +299,7 @@ export async function updateFeeInvoice(feeInvoiceId, payload) {
           due_date = $6,
           notes = $7,
           status = $8,
-          updated_at = NOW()
+          updated_at = CURRENT_TIMESTAMP
         WHERE id = $1
       `,
       [
@@ -445,12 +452,15 @@ export async function listFeeAssignments(filters = {}) {
     `
       SELECT
         fi.*,
-        COALESCE(SUM(fp.amount), 0) AS total_paid,
-        fi.net_amount - COALESCE(SUM(fp.amount), 0) AS balance
+        COALESCE(payments.total_paid, 0) AS total_paid,
+        fi.net_amount - COALESCE(payments.total_paid, 0) AS balance
       FROM fee_invoices fi
-      LEFT JOIN fee_payments fp ON fp.fee_invoice_id = fi.id
+      LEFT JOIN (
+        SELECT fee_invoice_id, SUM(amount) AS total_paid
+        FROM fee_payments
+        GROUP BY fee_invoice_id
+      ) payments ON payments.fee_invoice_id = fi.id
       ${whereClause}
-      GROUP BY fi.id
       ORDER BY fi.created_at DESC
     `,
     params
@@ -473,14 +483,16 @@ export async function recordFeePayment(payload) {
 
   return withTransaction(async (client) => {
     const invoice = await getFeeInvoiceById(payload.feeInvoiceId, client);
+    const paymentId = newId();
 
     if (Number(payload.amount) > Number(invoice.balance)) {
       throw createHttpError(400, "Payment amount exceeds the remaining balance.");
     }
 
-    const paymentResult = await client.query(
+    await client.query(
       `
         INSERT INTO fee_payments (
+          id,
           fee_invoice_id,
           institution_id,
           student_id,
@@ -490,10 +502,10 @@ export async function recordFeePayment(payload) {
           reference_number,
           remarks
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING *
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       `,
       [
+        paymentId,
         payload.feeInvoiceId,
         invoice.institutionId,
         invoice.studentId,
@@ -508,13 +520,13 @@ export async function recordFeePayment(payload) {
     const updatedInvoice = await getFeeInvoiceById(payload.feeInvoiceId, client);
     const nextStatus = Number(updatedInvoice.balance) <= 0 ? "PAID" : "PARTIALLY_PAID";
 
-    await client.query("UPDATE fee_invoices SET status = $2, updated_at = NOW() WHERE id = $1", [
+    await client.query("UPDATE fee_invoices SET status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1", [
       payload.feeInvoiceId,
       nextStatus
     ]);
 
     return {
-      payment: toCamelCaseRow(paymentResult.rows[0]),
+      payment: await getPaymentById(paymentId),
       invoice: {
         ...updatedInvoice,
         status: nextStatus
@@ -724,37 +736,76 @@ export async function toggleMonthlyLedgerMonth(payload) {
     }
 
     const nextPaid = Boolean(payload.isPaid);
+    const existingResult = await client.query(
+      `
+        SELECT id
+        FROM monthly_fee_ledgers
+        WHERE student_id = $1
+          AND fee_structure_id = $2
+          AND ledger_year = $3
+          AND month_number = $4
+      `,
+      [student.id, structure.id, year, monthNumber]
+    );
+    const ledgerId = existingResult.rowCount > 0 ? existingResult.rows[0].id : newId();
+
+    if (existingResult.rowCount > 0) {
+      await client.query(
+        `
+          UPDATE monthly_fee_ledgers
+          SET
+            institution_id = $2,
+            class_id = $3,
+            is_paid = $4,
+            paid_on = $5,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `,
+        [
+          ledgerId,
+          student.institutionId,
+          student.classId || null,
+          nextPaid,
+          nextPaid ? new Date().toISOString() : null
+        ]
+      );
+    } else {
+      await client.query(
+        `
+          INSERT INTO monthly_fee_ledgers (
+            id,
+            institution_id,
+            class_id,
+            student_id,
+            fee_structure_id,
+            ledger_year,
+            month_number,
+            is_paid,
+            paid_on
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `,
+        [
+          ledgerId,
+          student.institutionId,
+          student.classId || null,
+          student.id,
+          structure.id,
+          year,
+          monthNumber,
+          nextPaid,
+          nextPaid ? new Date().toISOString() : null
+        ]
+      );
+    }
+
     const result = await client.query(
       `
-        INSERT INTO monthly_fee_ledgers (
-          institution_id,
-          class_id,
-          student_id,
-          fee_structure_id,
-          ledger_year,
-          month_number,
-          is_paid,
-          paid_on
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (student_id, fee_structure_id, ledger_year, month_number)
-        DO UPDATE SET
-          is_paid = EXCLUDED.is_paid,
-          paid_on = EXCLUDED.paid_on,
-          class_id = EXCLUDED.class_id,
-          updated_at = NOW()
-        RETURNING *
+        SELECT *
+        FROM monthly_fee_ledgers
+        WHERE id = $1
       `,
-      [
-        student.institutionId,
-        student.classId || null,
-        student.id,
-        structure.id,
-        year,
-        monthNumber,
-        nextPaid,
-        nextPaid ? new Date().toISOString() : null
-      ]
+      [ledgerId]
     );
 
     return toCamelCaseRow(result.rows[0]);

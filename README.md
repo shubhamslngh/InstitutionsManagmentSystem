@@ -1,6 +1,6 @@
 # Maurya School Management
 
-Full-stack Next.js app for managing multiple schools and colleges with PostgreSQL-backed student and fee management.
+Full-stack Next.js app for managing multiple schools and colleges with MySQL-backed student and fee management.
 
 ## Features
 
@@ -15,18 +15,18 @@ Full-stack Next.js app for managing multiple schools and colleges with PostgreSQ
 
 - Next.js App Router
 - React
-- PostgreSQL
+- MySQL
 
 ## Environment
 
 Create a `.env` file in the project root.
 
 ```env
-DB_PROVIDER=postgres
+DB_PROVIDER=mysql
 DB_HOST=localhost
-DB_PORT=5432
+DB_PORT=3306
 DB_NAME=mauryaschool
-DB_USER=shubham
+DB_USER=root
 DB_PASSWORD=your_password
 DB_SSL=false
 
@@ -44,9 +44,7 @@ npm run db:init
 npm run dev
 ```
 
-If your PostgreSQL host, password, or database name is different, update the `DB_*` values in `.env`.
-
-This app currently supports PostgreSQL only. A phpMyAdmin/MySQL host cannot be used with the current `pg` database layer without a backend migration.
+If your MySQL host, password, or database name is different, update the `DB_*` values in `.env`.
 
 The app runs on `http://localhost:3000`.
 

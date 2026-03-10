@@ -22,33 +22,33 @@ function buildDatabaseUrl() {
     return process.env.DATABASE_URL;
   }
 
-  const provider = process.env.DB_PROVIDER || "postgres";
-  if (provider !== "postgres") {
+  const provider = process.env.DB_PROVIDER || "mysql";
+  if (provider !== "mysql") {
     throw new Error(
-      `Unsupported DB_PROVIDER "${provider}". This app currently supports PostgreSQL only.`
+      `Unsupported DB_PROVIDER "${provider}". This app currently supports MySQL only.`
     );
   }
 
   const host = process.env.DB_HOST;
-  const port = process.env.DB_PORT || "5432";
+  const port = process.env.DB_PORT || "3306";
   const name = process.env.DB_NAME;
   const user = process.env.DB_USER;
   const password = process.env.DB_PASSWORD;
 
   if (!host || !name || !user || !password) {
-    return "postgresql://shubham:your_password@localhost:5432/mauryaschool";
+    return "mysql://root:your_password@localhost:3306/mauryaschool";
   }
 
-  return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${name}`;
+  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${host}:${port}/${name}`;
 }
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: Number(process.env.PORT || 3000),
   host: process.env.HOST || "127.0.0.1",
-  databaseProvider: process.env.DB_PROVIDER || "postgres",
+  databaseProvider: process.env.DB_PROVIDER || "mysql",
   databaseHost: process.env.DB_HOST || "",
-  databasePort: Number(process.env.DB_PORT || 5432),
+  databasePort: Number(process.env.DB_PORT || 3306),
   databaseName: process.env.DB_NAME || "",
   databaseUser: process.env.DB_USER || "",
   databasePassword: process.env.DB_PASSWORD || "",

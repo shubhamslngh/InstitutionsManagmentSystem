@@ -1,4 +1,5 @@
 import { query } from "../db/index.js";
+import { newId } from "../db/ids.js";
 import { createHttpError } from "../utils/httpError.js";
 import { requireEnum, requireFields } from "../utils/validators.js";
 import { mapRows, toCamelCaseRow } from "../utils/mappers.js";
@@ -21,14 +22,15 @@ export async function getInstitutionById(institutionId) {
 export async function createInstitution(payload) {
   requireFields(payload, ["name", "type"]);
   requireEnum(payload.type, institutionTypes, "type");
+  const institutionId = newId();
 
-  const result = await query(
+  await query(
     `
-      INSERT INTO institutions (name, type, code, address, contact_email, contact_phone)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING *
+      INSERT INTO institutions (id, name, type, code, address, contact_email, contact_phone)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
     `,
     [
+      institutionId,
       payload.name.trim(),
       payload.type,
       payload.code?.trim() || null,
@@ -38,7 +40,7 @@ export async function createInstitution(payload) {
     ]
   );
 
-  return toCamelCaseRow(result.rows[0]);
+  return getInstitutionById(institutionId);
 }
 
 export async function updateInstitution(institutionId, payload) {
@@ -46,7 +48,7 @@ export async function updateInstitution(institutionId, payload) {
   const nextType = payload.type ?? currentInstitution.type;
   requireEnum(nextType, institutionTypes, "type");
 
-  const result = await query(
+  await query(
     `
       UPDATE institutions
       SET
@@ -57,7 +59,6 @@ export async function updateInstitution(institutionId, payload) {
         contact_email = $6,
         contact_phone = $7
       WHERE id = $1
-      RETURNING *
     `,
     [
       institutionId,
@@ -70,7 +71,7 @@ export async function updateInstitution(institutionId, payload) {
     ]
   );
 
-  return toCamelCaseRow(result.rows[0]);
+  return getInstitutionById(institutionId);
 }
 
 export async function deleteInstitution(institutionId) {
