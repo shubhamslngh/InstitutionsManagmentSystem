@@ -1,0 +1,38 @@
+import { ensureSchema } from "../../../../../db/ensureSchema.js";
+import {
+  deleteFeeStructure,
+  getFeeStructureById,
+  updateFeeStructure
+} from "../../../../../services/feeService.js";
+import { failure, noContent, success } from "../../../../../utils/api.js";
+
+export const runtime = "nodejs";
+
+export async function GET(request, context) {
+  try {
+    await ensureSchema();
+    return success(await getFeeStructureById(context.params.feeStructureId));
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function PATCH(request, context) {
+  try {
+    await ensureSchema();
+    const body = await request.json();
+    return success(await updateFeeStructure(context.params.feeStructureId, body));
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function DELETE(request, context) {
+  try {
+    await ensureSchema();
+    await deleteFeeStructure(context.params.feeStructureId);
+    return noContent();
+  } catch (error) {
+    return failure(error);
+  }
+}
