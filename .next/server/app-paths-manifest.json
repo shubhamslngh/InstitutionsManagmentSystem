@@ -1,25 +1,7 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/api/classes/route": "app/api/classes/route.js",
-  "/api/fees/assignments/[feeInvoiceId]/route": "app/api/fees/assignments/[feeInvoiceId]/route.js",
-  "/api/classes/[classId]/route": "app/api/classes/[classId]/route.js",
-  "/api/fees/assignments/route": "app/api/fees/assignments/route.js",
-  "/api/fees/assignments/from-class/route": "app/api/fees/assignments/from-class/route.js",
-  "/api/fees/assignments/from-structure/route": "app/api/fees/assignments/from-structure/route.js",
-  "/api/fees/monthly-ledger/route": "app/api/fees/monthly-ledger/route.js",
-  "/api/fees/payments/route": "app/api/fees/payments/route.js",
-  "/api/fees/structures/[feeStructureId]/route": "app/api/fees/structures/[feeStructureId]/route.js",
-  "/api/fees/payments/[paymentId]/route": "app/api/fees/payments/[paymentId]/route.js",
-  "/api/fees/structures/route": "app/api/fees/structures/route.js",
-  "/api/institutions/[institutionId]/route": "app/api/institutions/[institutionId]/route.js",
   "/api/institutions/route": "app/api/institutions/route.js",
-  "/api/students/[studentId]/fees/route": "app/api/students/[studentId]/fees/route.js",
-  "/api/students/[studentId]/route": "app/api/students/[studentId]/route.js",
-  "/api/students/route": "app/api/students/route.js",
-  "/api/health/route": "app/api/health/route.js",
-  "/students/page": "app/students/page.js",
-  "/classes/page": "app/classes/page.js",
-  "/fees/page": "app/fees/page.js",
+  "/api/institutions/[institutionId]/route": "app/api/institutions/[institutionId]/route.js",
   "/page": "app/page.js",
-  "/institutions/page": "app/institutions/page.js"
+  "/institutions/page": "app/institutions/page.js",
+  "/students/page": "app/students/page.js"
 }
