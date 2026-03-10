@@ -7,55 +7,6 @@
       "static/chunks/main-app-5c09af523e499713.js",
       "static/chunks/app/_not-found/page-5d570603fb39e283.js"
     ],
-    "/api/fees/assignments/[feeInvoiceId]/route": [
-      "static/chunks/webpack-2eb758dea75faf50.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-ebd51be49873d76c.js",
-      "static/chunks/main-app-5c09af523e499713.js",
-      "static/chunks/app/api/fees/assignments/[feeInvoiceId]/route-76be3746ec82979c.js"
-    ],
-    "/api/classes/route": [
-      "static/chunks/webpack-2eb758dea75faf50.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-ebd51be49873d76c.js",
-      "static/chunks/main-app-5c09af523e499713.js",
-      "static/chunks/app/api/classes/route-76be3746ec82979c.js"
-    ],
-    "/api/classes/[classId]/route": [
-      "static/chunks/webpack-2eb758dea75faf50.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-ebd51be49873d76c.js",
-      "static/chunks/main-app-5c09af523e499713.js",
-      "static/chunks/app/api/classes/[classId]/route-76be3746ec82979c.js"
-    ],
-    "/api/fees/assignments/from-structure/route": [
-      "static/chunks/webpack-2eb758dea75faf50.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-ebd51be49873d76c.js",
-      "static/chunks/main-app-5c09af523e499713.js",
-      "static/chunks/app/api/fees/assignments/from-structure/route-76be3746ec82979c.js"
-    ],
-    "/api/fees/assignments/route": [
-      "static/chunks/webpack-2eb758dea75faf50.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-ebd51be49873d76c.js",
-      "static/chunks/main-app-5c09af523e499713.js",
-      "static/chunks/app/api/fees/assignments/route-76be3746ec82979c.js"
-    ],
-    "/api/fees/payments/[paymentId]/route": [
-      "static/chunks/webpack-2eb758dea75faf50.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-ebd51be49873d76c.js",
-      "static/chunks/main-app-5c09af523e499713.js",
-      "static/chunks/app/api/fees/payments/[paymentId]/route-76be3746ec82979c.js"
-    ],
-    "/api/fees/monthly-ledger/route": [
-      "static/chunks/webpack-2eb758dea75faf50.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-ebd51be49873d76c.js",
-      "static/chunks/main-app-5c09af523e499713.js",
-      "static/chunks/app/api/fees/monthly-ledger/route-76be3746ec82979c.js"
-    ],
     "/layout": [
       "static/chunks/webpack-2eb758dea75faf50.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
@@ -64,12 +15,54 @@
       "static/css/b46a3a56ed8f560d.css",
       "static/chunks/app/layout-9808532c72eba2f3.js"
     ],
+    "/api/classes/route": [
+      "static/chunks/webpack-2eb758dea75faf50.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ebd51be49873d76c.js",
+      "static/chunks/main-app-5c09af523e499713.js",
+      "static/chunks/app/api/classes/route-76be3746ec82979c.js"
+    ],
+    "/api/fees/assignments/[feeInvoiceId]/route": [
+      "static/chunks/webpack-2eb758dea75faf50.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ebd51be49873d76c.js",
+      "static/chunks/main-app-5c09af523e499713.js",
+      "static/chunks/app/api/fees/assignments/[feeInvoiceId]/route-76be3746ec82979c.js"
+    ],
+    "/api/classes/[classId]/route": [
+      "static/chunks/webpack-2eb758dea75faf50.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ebd51be49873d76c.js",
+      "static/chunks/main-app-5c09af523e499713.js",
+      "static/chunks/app/api/classes/[classId]/route-76be3746ec82979c.js"
+    ],
+    "/api/fees/assignments/route": [
+      "static/chunks/webpack-2eb758dea75faf50.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ebd51be49873d76c.js",
+      "static/chunks/main-app-5c09af523e499713.js",
+      "static/chunks/app/api/fees/assignments/route-76be3746ec82979c.js"
+    ],
     "/api/fees/assignments/from-class/route": [
       "static/chunks/webpack-2eb758dea75faf50.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-ebd51be49873d76c.js",
       "static/chunks/main-app-5c09af523e499713.js",
       "static/chunks/app/api/fees/assignments/from-class/route-76be3746ec82979c.js"
+    ],
+    "/api/fees/assignments/from-structure/route": [
+      "static/chunks/webpack-2eb758dea75faf50.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ebd51be49873d76c.js",
+      "static/chunks/main-app-5c09af523e499713.js",
+      "static/chunks/app/api/fees/assignments/from-structure/route-76be3746ec82979c.js"
+    ],
+    "/api/fees/monthly-ledger/route": [
+      "static/chunks/webpack-2eb758dea75faf50.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ebd51be49873d76c.js",
+      "static/chunks/main-app-5c09af523e499713.js",
+      "static/chunks/app/api/fees/monthly-ledger/route-76be3746ec82979c.js"
     ],
     "/api/fees/payments/route": [
       "static/chunks/webpack-2eb758dea75faf50.js",
@@ -85,6 +78,13 @@
       "static/chunks/main-app-5c09af523e499713.js",
       "static/chunks/app/api/fees/structures/[feeStructureId]/route-76be3746ec82979c.js"
     ],
+    "/api/fees/payments/[paymentId]/route": [
+      "static/chunks/webpack-2eb758dea75faf50.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ebd51be49873d76c.js",
+      "static/chunks/main-app-5c09af523e499713.js",
+      "static/chunks/app/api/fees/payments/[paymentId]/route-76be3746ec82979c.js"
+    ],
     "/api/fees/structures/route": [
       "static/chunks/webpack-2eb758dea75faf50.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
@@ -92,12 +92,12 @@
       "static/chunks/main-app-5c09af523e499713.js",
       "static/chunks/app/api/fees/structures/route-76be3746ec82979c.js"
     ],
-    "/api/health/route": [
+    "/api/institutions/[institutionId]/route": [
       "static/chunks/webpack-2eb758dea75faf50.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-ebd51be49873d76c.js",
       "static/chunks/main-app-5c09af523e499713.js",
-      "static/chunks/app/api/health/route-76be3746ec82979c.js"
+      "static/chunks/app/api/institutions/[institutionId]/route-76be3746ec82979c.js"
     ],
     "/api/institutions/route": [
       "static/chunks/webpack-2eb758dea75faf50.js",
@@ -113,12 +113,12 @@
       "static/chunks/main-app-5c09af523e499713.js",
       "static/chunks/app/api/students/[studentId]/fees/route-76be3746ec82979c.js"
     ],
-    "/api/institutions/[institutionId]/route": [
+    "/api/students/[studentId]/route": [
       "static/chunks/webpack-2eb758dea75faf50.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-ebd51be49873d76c.js",
       "static/chunks/main-app-5c09af523e499713.js",
-      "static/chunks/app/api/institutions/[institutionId]/route-76be3746ec82979c.js"
+      "static/chunks/app/api/students/[studentId]/route-76be3746ec82979c.js"
     ],
     "/api/students/route": [
       "static/chunks/webpack-2eb758dea75faf50.js",
@@ -127,12 +127,20 @@
       "static/chunks/main-app-5c09af523e499713.js",
       "static/chunks/app/api/students/route-76be3746ec82979c.js"
     ],
-    "/api/students/[studentId]/route": [
+    "/api/health/route": [
       "static/chunks/webpack-2eb758dea75faf50.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-ebd51be49873d76c.js",
       "static/chunks/main-app-5c09af523e499713.js",
-      "static/chunks/app/api/students/[studentId]/route-76be3746ec82979c.js"
+      "static/chunks/app/api/health/route-76be3746ec82979c.js"
+    ],
+    "/students/page": [
+      "static/chunks/webpack-2eb758dea75faf50.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ebd51be49873d76c.js",
+      "static/chunks/main-app-5c09af523e499713.js",
+      "static/chunks/176-dbfe7d379a5d476e.js",
+      "static/chunks/app/students/page-8f0c4f3bd1fcbacb.js"
     ],
     "/classes/page": [
       "static/chunks/webpack-2eb758dea75faf50.js",
@@ -150,22 +158,6 @@
       "static/chunks/176-dbfe7d379a5d476e.js",
       "static/chunks/app/fees/page-7d3420e779dad637.js"
     ],
-    "/institutions/page": [
-      "static/chunks/webpack-2eb758dea75faf50.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-ebd51be49873d76c.js",
-      "static/chunks/main-app-5c09af523e499713.js",
-      "static/chunks/176-dbfe7d379a5d476e.js",
-      "static/chunks/app/institutions/page-8b79c642623aba74.js"
-    ],
-    "/students/page": [
-      "static/chunks/webpack-2eb758dea75faf50.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-ebd51be49873d76c.js",
-      "static/chunks/main-app-5c09af523e499713.js",
-      "static/chunks/176-dbfe7d379a5d476e.js",
-      "static/chunks/app/students/page-8f0c4f3bd1fcbacb.js"
-    ],
     "/page": [
       "static/chunks/webpack-2eb758dea75faf50.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
@@ -173,6 +165,14 @@
       "static/chunks/main-app-5c09af523e499713.js",
       "static/chunks/176-dbfe7d379a5d476e.js",
       "static/chunks/app/page-15a61cb90204dc3c.js"
+    ],
+    "/institutions/page": [
+      "static/chunks/webpack-2eb758dea75faf50.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-ebd51be49873d76c.js",
+      "static/chunks/main-app-5c09af523e499713.js",
+      "static/chunks/176-dbfe7d379a5d476e.js",
+      "static/chunks/app/institutions/page-8b79c642623aba74.js"
     ]
   }
 }
