@@ -2,6 +2,12 @@
 
 import { startTransition, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "./ui/button.js";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card.js";
+import { Input } from "./ui/input.js";
+import { Select } from "./ui/select.js";
+import { Table } from "./ui/table.js";
+import { Badge } from "./ui/badge.js";
 
 const initialForm = {
   name: "",
@@ -125,47 +131,48 @@ export default function InstitutionManager({ initialInstitutions = [], initialEr
         </article>
       </section>
 
-      <section className="panel">
-        <div className="page-head">
+      <Card className="panel">
+        <CardHeader className="page-head">
           <span className="eyebrow">New Institution</span>
-          <h2>{editingId ? "Update campus" : "Register campus"}</h2>
-          <p>Add a school or college and make it available to the admissions and fee teams.</p>
-        </div>
+          <CardTitle>{editingId ? "Update campus" : "Register campus"}</CardTitle>
+          <CardDescription>Add a school or college and make it available to the admissions and fee teams.</CardDescription>
+        </CardHeader>
+        <CardContent>
         <form className="form-grid" onSubmit={handleSubmit}>
           <label className="field">
             <span>Name</span>
-            <input name="name" value={form.name} onChange={updateField} required />
+            <Input name="name" value={form.name} onChange={updateField} required />
           </label>
           <label className="field">
             <span>Type</span>
-            <select name="type" value={form.type} onChange={updateField}>
+            <Select name="type" value={form.type} onChange={updateField}>
               <option value="SCHOOL">School</option>
               <option value="COLLEGE">College</option>
-            </select>
+            </Select>
           </label>
           <label className="field">
             <span>Code</span>
-            <input name="code" value={form.code} onChange={updateField} />
+            <Input name="code" value={form.code} onChange={updateField} />
           </label>
           <label className="field">
             <span>Address</span>
-            <input name="address" value={form.address} onChange={updateField} />
+            <Input name="address" value={form.address} onChange={updateField} />
           </label>
           <label className="field">
             <span>Email</span>
-            <input name="contactEmail" type="email" value={form.contactEmail} onChange={updateField} />
+            <Input name="contactEmail" type="email" value={form.contactEmail} onChange={updateField} />
           </label>
           <label className="field">
             <span>Phone</span>
-            <input name="contactPhone" value={form.contactPhone} onChange={updateField} />
+            <Input name="contactPhone" value={form.contactPhone} onChange={updateField} />
           </label>
           <div className="form-actions">
-            <button className="button button-primary" disabled={isSubmitting} type="submit">
+            <Button disabled={isSubmitting} type="submit">
               {isSubmitting ? "Saving..." : editingId ? "Save Changes" : "Create Institution"}
-            </button>
+            </Button>
             {editingId ? (
-              <button
-                className="button button-muted"
+              <Button
+                variant="secondary"
                 onClick={() => {
                   setEditingId(null);
                   setForm(initialForm);
@@ -173,20 +180,22 @@ export default function InstitutionManager({ initialInstitutions = [], initialEr
                 type="button"
               >
                 Cancel
-              </button>
+              </Button>
             ) : null}
           </div>
         </form>
         {message ? <div className="notice">{message}</div> : null}
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="panel">
-        <div className="page-head">
-          <h2>Institution directory</h2>
-          <p>All registered campuses available for student and finance operations.</p>
-        </div>
+      <Card className="panel">
+        <CardHeader className="page-head">
+          <CardTitle>Institution directory</CardTitle>
+          <CardDescription>All registered campuses available for student and finance operations.</CardDescription>
+        </CardHeader>
+        <CardContent>
         <div className="toolbar">
-          <input
+          <Input
             className="filter-input"
             onChange={(event) => setSearchTerm(event.target.value)}
             placeholder="Search by campus name, type, or code"
@@ -197,7 +206,7 @@ export default function InstitutionManager({ initialInstitutions = [], initialEr
         {filteredInstitutions.length === 0 ? (
           <p className="empty">No institutions added yet.</p>
         ) : (
-          <table className="table">
+          <Table className="table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -211,25 +220,26 @@ export default function InstitutionManager({ initialInstitutions = [], initialEr
               {filteredInstitutions.map((institution) => (
                 <tr key={institution.id}>
                   <td>{institution.name}</td>
-                  <td><span className="badge">{institution.type}</span></td>
+                  <td><Badge>{institution.type}</Badge></td>
                   <td>{institution.code || "-"}</td>
                   <td>{institution.contactEmail || institution.contactPhone || "-"}</td>
                   <td>
                     <div className="row-actions">
-                      <button className="button button-small" onClick={() => startEdit(institution)} type="button">
+                      <Button size="sm" variant="outline" onClick={() => startEdit(institution)} type="button">
                         Edit
-                      </button>
-                      <button className="button button-small button-danger" onClick={() => handleDelete(institution.id)} type="button">
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleDelete(institution.id)} type="button">
                         Delete
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         )}
-      </section>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -2,6 +2,12 @@
 
 import { startTransition, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Badge } from "./ui/badge.js";
+import { Button } from "./ui/button.js";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card.js";
+import { Input } from "./ui/input.js";
+import { Select } from "./ui/select.js";
+import { Table } from "./ui/table.js";
 
 const initialForm = {
   institutionId: "",
@@ -128,49 +134,50 @@ export default function ClassManager({
         </article>
       </section>
 
-      <section className="panel">
-        <div className="page-head">
+      <Card className="panel">
+        <CardHeader className="page-head">
           <span className="eyebrow">Class Desk</span>
-          <h2>{editingId ? "Update class" : "Create class"}</h2>
-          <p>Attach classes to campuses so admissions and fee plans can follow the same structure.</p>
-        </div>
+          <CardTitle>{editingId ? "Update class" : "Create class"}</CardTitle>
+          <CardDescription>Attach classes to campuses so admissions and fee plans can follow the same structure.</CardDescription>
+        </CardHeader>
+        <CardContent>
         {institutions.length === 0 ? (
           <div className="notice">Create an institution before adding classes.</div>
         ) : (
           <form className="form-grid" onSubmit={handleSubmit}>
             <label className="field">
               <span>Institution</span>
-              <select name="institutionId" value={form.institutionId} onChange={updateField}>
+              <Select name="institutionId" value={form.institutionId} onChange={updateField}>
                 {institutions.map((institution) => (
                   <option key={institution.id} value={institution.id}>
                     {institution.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="field">
               <span>Class Name</span>
-              <input name="name" onChange={updateField} required value={form.name} />
+              <Input name="name" onChange={updateField} required value={form.name} />
             </label>
             <label className="field">
               <span>Section</span>
-              <input name="section" onChange={updateField} value={form.section} />
+              <Input name="section" onChange={updateField} value={form.section} />
             </label>
             <label className="field">
               <span>Academic Year</span>
-              <input name="academicYear" onChange={updateField} value={form.academicYear} />
+              <Input name="academicYear" onChange={updateField} value={form.academicYear} />
             </label>
             <label className="field">
               <span>Capacity</span>
-              <input min="1" name="capacity" onChange={updateField} type="number" value={form.capacity} />
+              <Input min="1" name="capacity" onChange={updateField} type="number" value={form.capacity} />
             </label>
             <div className="form-actions">
-              <button className="button button-primary" disabled={isSubmitting} type="submit">
+              <Button disabled={isSubmitting} type="submit">
                 {isSubmitting ? "Saving..." : editingId ? "Save Changes" : "Create Class"}
-              </button>
+              </Button>
               {editingId ? (
-                <button
-                  className="button button-muted"
+                <Button
+                  variant="secondary"
                   onClick={() => {
                     setEditingId(null);
                     setForm({ ...initialForm, institutionId: institutions[0]?.id || "" });
@@ -178,21 +185,23 @@ export default function ClassManager({
                   type="button"
                 >
                   Cancel
-                </button>
+                </Button>
               ) : null}
             </div>
           </form>
         )}
         {message ? <div className="notice">{message}</div> : null}
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="panel">
-        <div className="page-head">
-          <h2>Class register</h2>
-          <p>Students can be attached to these classes and inherit class-level fee plans.</p>
-        </div>
+      <Card className="panel">
+        <CardHeader className="page-head">
+          <CardTitle>Class register</CardTitle>
+          <CardDescription>Students can be attached to these classes and inherit class-level fee plans.</CardDescription>
+        </CardHeader>
+        <CardContent>
         <div className="toolbar">
-          <select
+          <Select
             className="filter-input"
             onChange={(event) => setInstitutionFilter(event.target.value)}
             value={institutionFilter}
@@ -203,13 +212,13 @@ export default function ClassManager({
                 {institution.name}
               </option>
             ))}
-          </select>
+          </Select>
           <span className="stat-pill">{filteredClasses.length} classes</span>
         </div>
         {filteredClasses.length === 0 ? (
           <p className="empty">No classes created yet.</p>
         ) : (
-          <table className="table">
+          <Table className="table">
             <thead>
               <tr>
                 <th>Class</th>
@@ -224,26 +233,27 @@ export default function ClassManager({
               {filteredClasses.map((item) => (
                 <tr key={item.id}>
                   <td>{item.name}</td>
-                  <td>{item.section || "-"}</td>
+                  <td>{item.section ? <Badge variant="secondary">{item.section}</Badge> : "-"}</td>
                   <td>{item.institutionName}</td>
                   <td>{item.academicYear || "-"}</td>
                   <td>{item.capacity || "-"}</td>
                   <td>
                     <div className="row-actions">
-                      <button className="button button-small" onClick={() => startEdit(item)} type="button">
+                      <Button size="sm" variant="outline" onClick={() => startEdit(item)} type="button">
                         Edit
-                      </button>
-                      <button className="button button-small button-danger" onClick={() => handleDelete(item.id)} type="button">
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleDelete(item.id)} type="button">
                         Delete
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         )}
-      </section>
+        </CardContent>
+      </Card>
     </div>
   );
 }

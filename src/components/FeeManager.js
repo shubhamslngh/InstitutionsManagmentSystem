@@ -2,6 +2,13 @@
 
 import { startTransition, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Badge } from "./ui/badge.js";
+import { Button } from "./ui/button.js";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card.js";
+import { Input } from "./ui/input.js";
+import { Select } from "./ui/select.js";
+import { Table } from "./ui/table.js";
+import { Textarea } from "./ui/textarea.js";
 
 const structureDefaults = {
   institutionId: "",
@@ -472,19 +479,20 @@ export default function FeeManager({
         </article>
       </section>
 
-      <section className="panel">
-        <div className="page-head">
+      <Card className="panel">
+        <CardHeader className="page-head">
           <span className="eyebrow">Fee Setup</span>
-          <h2>{editingStructureId ? "Update fee structure" : "Create fee structure"}</h2>
-          <p>Maintain reusable tuition, transport, lab, and hostel fee templates per institution.</p>
-        </div>
+          <CardTitle>{editingStructureId ? "Update fee structure" : "Create fee structure"}</CardTitle>
+          <CardDescription>Maintain reusable tuition, transport, lab, and hostel fee templates per institution.</CardDescription>
+        </CardHeader>
+        <CardContent>
         {institutions.length === 0 ? (
           <div className="notice">Create institutions first so fee structures can be attached to them.</div>
         ) : (
           <form className="form-grid" onSubmit={handleStructureSubmit}>
             <label className="field">
               <span>Institution</span>
-              <select
+              <Select
                 name="institutionId"
                 value={structureForm.institutionId}
                 onChange={updateForm(setStructureForm)}
@@ -494,11 +502,11 @@ export default function FeeManager({
                     {institution.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="field">
               <span>Class</span>
-              <select name="classId" value={structureForm.classId} onChange={updateForm(setStructureForm)}>
+              <Select name="classId" value={structureForm.classId} onChange={updateForm(setStructureForm)}>
                 <option value="">All classes</option>
                 {classes
                   .filter((item) => item.institutionId === structureForm.institutionId)
@@ -507,45 +515,45 @@ export default function FeeManager({
                       {item.name}{item.section ? ` - ${item.section}` : ""}
                     </option>
                   ))}
-              </select>
+              </Select>
             </label>
             <label className="field">
               <span>Fee Name</span>
-              <input name="name" value={structureForm.name} onChange={updateForm(setStructureForm)} required />
+              <Input name="name" value={structureForm.name} onChange={updateForm(setStructureForm)} required />
             </label>
             <label className="field">
               <span>Amount</span>
-              <input name="amount" type="number" min="1" value={structureForm.amount} onChange={updateForm(setStructureForm)} required />
+              <Input name="amount" type="number" min="1" value={structureForm.amount} onChange={updateForm(setStructureForm)} required />
             </label>
             <label className="field">
               <span>Frequency</span>
-              <select name="frequency" value={structureForm.frequency} onChange={updateForm(setStructureForm)}>
+              <Select name="frequency" value={structureForm.frequency} onChange={updateForm(setStructureForm)}>
                 <option value="ONE_TIME">One Time</option>
                 <option value="MONTHLY">Monthly</option>
                 <option value="QUARTERLY">Quarterly</option>
                 <option value="SEMESTER">Semester</option>
                 <option value="YEARLY">Yearly</option>
-              </select>
+              </Select>
             </label>
             <label className="field">
               <span>Applicable For</span>
-              <input name="applicableFor" value={structureForm.applicableFor} onChange={updateForm(setStructureForm)} />
+              <Input name="applicableFor" value={structureForm.applicableFor} onChange={updateForm(setStructureForm)} />
             </label>
             <label className="field">
               <span>Due Day</span>
-              <input name="dueDayOfMonth" type="number" min="1" max="31" value={structureForm.dueDayOfMonth} onChange={updateForm(setStructureForm)} />
+              <Input name="dueDayOfMonth" type="number" min="1" max="31" value={structureForm.dueDayOfMonth} onChange={updateForm(setStructureForm)} />
             </label>
             <label className="field field-wide">
               <span>Notes</span>
-              <textarea name="notes" value={structureForm.notes} onChange={updateForm(setStructureForm)} rows="3" />
+              <Textarea name="notes" value={structureForm.notes} onChange={updateForm(setStructureForm)} rows="3" />
             </label>
             <div className="form-actions">
-              <button className="button button-primary" disabled={loadingForm === "structure"} type="submit">
+              <Button disabled={loadingForm === "structure"} type="submit">
                 {loadingForm === "structure" ? "Saving..." : editingStructureId ? "Save Changes" : "Create Fee Structure"}
-              </button>
+              </Button>
               {editingStructureId ? (
-                <button
-                  className="button button-muted"
+                <Button
+                  variant="secondary"
                   onClick={() => {
                     setEditingStructureId(null);
                     setStructureForm({ ...structureDefaults, institutionId: institutions[0]?.id || "" });
@@ -553,26 +561,28 @@ export default function FeeManager({
                   type="button"
                 >
                   Cancel
-                </button>
+                </Button>
               ) : null}
             </div>
           </form>
         )}
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="panel">
-        <div className="page-head">
+      <Card className="panel">
+        <CardHeader className="page-head">
           <span className="eyebrow">Class Billing</span>
-          <h2>Generate fees from class plan</h2>
-          <p>Create invoices from all active fee structures attached to the student's class.</p>
-        </div>
+          <CardTitle>Generate fees from class plan</CardTitle>
+          <CardDescription>Create invoices from all active fee structures attached to the student's class.</CardDescription>
+        </CardHeader>
+        <CardContent>
         {students.length === 0 ? (
           <div className="notice">Add students and assign them to classes first.</div>
         ) : (
           <form className="form-grid" onSubmit={handleClassBillingSubmit}>
             <label className="field">
               <span>Student</span>
-              <select
+              <Select
                 name="studentId"
                 onChange={updateForm(setClassBillingForm)}
                 value={classBillingForm.studentId}
@@ -582,11 +592,11 @@ export default function FeeManager({
                     {student.firstName} {student.lastName}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="field">
               <span>Due Date</span>
-              <input
+              <Input
                 name="dueDate"
                 onChange={updateForm(setClassBillingForm)}
                 type="date"
@@ -595,7 +605,7 @@ export default function FeeManager({
             </label>
             <label className="field field-wide">
               <span>Notes</span>
-              <textarea
+              <Textarea
                 name="notes"
                 onChange={updateForm(setClassBillingForm)}
                 rows="3"
@@ -603,20 +613,22 @@ export default function FeeManager({
               />
             </label>
             <div className="form-actions">
-              <button className="button button-primary" disabled={loadingForm === "class-billing"} type="submit">
+              <Button disabled={loadingForm === "class-billing"} type="submit">
                 {loadingForm === "class-billing" ? "Generating..." : "Generate Class Fees"}
-              </button>
+              </Button>
             </div>
           </form>
         )}
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="panel">
-        <div className="page-head">
+      <Card className="panel">
+        <CardHeader className="page-head">
           <span className="eyebrow">Billing</span>
-          <h2>{editingInvoiceId ? "Update student invoice" : "Issue student invoices"}</h2>
-          <p>Create a fresh invoice or bill a student from an existing fee template.</p>
-        </div>
+          <CardTitle>{editingInvoiceId ? "Update student invoice" : "Issue student invoices"}</CardTitle>
+          <CardDescription>Create a fresh invoice or bill a student from an existing fee template.</CardDescription>
+        </CardHeader>
+        <CardContent>
         {students.length === 0 ? (
           <div className="notice">Add students before generating invoices.</div>
         ) : (
@@ -625,7 +637,7 @@ export default function FeeManager({
               <h3>Direct invoice</h3>
               <label className="field">
                 <span>Student</span>
-                <select
+                <Select
                   disabled={Boolean(editingInvoiceId)}
                   name="studentId"
                   value={invoiceForm.studentId}
@@ -636,35 +648,35 @@ export default function FeeManager({
                       {student.firstName} {student.lastName}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label className="field">
                 <span>Title</span>
-                <input name="title" value={invoiceForm.title} onChange={updateForm(setInvoiceForm)} required />
+                <Input name="title" value={invoiceForm.title} onChange={updateForm(setInvoiceForm)} required />
               </label>
               <label className="field">
                 <span>Gross Amount</span>
-                <input name="grossAmount" type="number" min="1" value={invoiceForm.grossAmount} onChange={updateForm(setInvoiceForm)} required />
+                <Input name="grossAmount" type="number" min="1" value={invoiceForm.grossAmount} onChange={updateForm(setInvoiceForm)} required />
               </label>
               <label className="field">
                 <span>Discount</span>
-                <input name="discountAmount" type="number" min="0" value={invoiceForm.discountAmount} onChange={updateForm(setInvoiceForm)} />
+                <Input name="discountAmount" type="number" min="0" value={invoiceForm.discountAmount} onChange={updateForm(setInvoiceForm)} />
               </label>
               <label className="field">
                 <span>Due Date</span>
-                <input name="dueDate" type="date" value={invoiceForm.dueDate} onChange={updateForm(setInvoiceForm)} />
+                <Input name="dueDate" type="date" value={invoiceForm.dueDate} onChange={updateForm(setInvoiceForm)} />
               </label>
               <label className="field field-wide">
                 <span>Notes</span>
-                <textarea name="notes" value={invoiceForm.notes} onChange={updateForm(setInvoiceForm)} rows="3" />
+                <Textarea name="notes" value={invoiceForm.notes} onChange={updateForm(setInvoiceForm)} rows="3" />
               </label>
               <div className="form-actions">
-                <button className="button button-primary" disabled={loadingForm === "invoice"} type="submit">
+                <Button disabled={loadingForm === "invoice"} type="submit">
                   {loadingForm === "invoice" ? "Saving..." : editingInvoiceId ? "Save Changes" : "Create Invoice"}
-                </button>
+                </Button>
                 {editingInvoiceId ? (
-                  <button
-                    className="button button-muted"
+                  <Button
+                    variant="secondary"
                     onClick={() => {
                       setEditingInvoiceId(null);
                       setInvoiceForm({ ...invoiceDefaults, studentId: students[0]?.id || "" });
@@ -672,7 +684,7 @@ export default function FeeManager({
                     type="button"
                   >
                     Cancel
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             </form>
@@ -681,7 +693,7 @@ export default function FeeManager({
               <h3>From structure</h3>
               <label className="field">
                 <span>Student</span>
-                <select
+                <Select
                   name="studentId"
                   value={fromStructureForm.studentId}
                   onChange={updateForm(setFromStructureForm)}
@@ -691,11 +703,11 @@ export default function FeeManager({
                       {student.firstName} {student.lastName}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label className="field">
                 <span>Fee Structure</span>
-                <select
+                <Select
                   name="feeStructureId"
                   value={fromStructureForm.feeStructureId}
                   onChange={updateForm(setFromStructureForm)}
@@ -706,89 +718,93 @@ export default function FeeManager({
                       {structure.name} ({institutionMap[structure.institutionId] || "Institution"})
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label className="field">
                 <span>Discount</span>
-                <input name="discountAmount" type="number" min="0" value={fromStructureForm.discountAmount} onChange={updateForm(setFromStructureForm)} />
+                <Input name="discountAmount" type="number" min="0" value={fromStructureForm.discountAmount} onChange={updateForm(setFromStructureForm)} />
               </label>
               <label className="field">
                 <span>Due Date</span>
-                <input name="dueDate" type="date" value={fromStructureForm.dueDate} onChange={updateForm(setFromStructureForm)} />
+                <Input name="dueDate" type="date" value={fromStructureForm.dueDate} onChange={updateForm(setFromStructureForm)} />
               </label>
               <label className="field field-wide">
                 <span>Notes</span>
-                <textarea name="notes" value={fromStructureForm.notes} onChange={updateForm(setFromStructureForm)} rows="3" />
+                <Textarea name="notes" value={fromStructureForm.notes} onChange={updateForm(setFromStructureForm)} rows="3" />
               </label>
               <div className="form-actions">
-                <button className="button button-primary" disabled={loadingForm === "from-structure"} type="submit">
+                <Button disabled={loadingForm === "from-structure"} type="submit">
                   {loadingForm === "from-structure" ? "Saving..." : "Create From Structure"}
-                </button>
+                </Button>
               </div>
             </form>
           </div>
         )}
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="panel">
-        <div className="page-head">
+      <Card className="panel">
+        <CardHeader className="page-head">
           <span className="eyebrow">Collections</span>
-          <h2>Capture payment</h2>
-          <p>Record incoming payments against open invoices and update balances immediately.</p>
-        </div>
+          <CardTitle>Capture payment</CardTitle>
+          <CardDescription>Record incoming payments against open invoices and update balances immediately.</CardDescription>
+        </CardHeader>
+        <CardContent>
         {invoices.length === 0 ? (
           <div className="notice">Create an invoice before recording payments.</div>
         ) : (
           <form className="form-grid" onSubmit={handlePaymentSubmit}>
             <label className="field">
               <span>Invoice</span>
-              <select name="feeInvoiceId" value={paymentForm.feeInvoiceId} onChange={updateForm(setPaymentForm)}>
+              <Select name="feeInvoiceId" value={paymentForm.feeInvoiceId} onChange={updateForm(setPaymentForm)}>
                 {invoices.map((invoice) => (
                   <option key={invoice.id} value={invoice.id}>
                     {invoice.title} - balance {Number(invoice.balance).toLocaleString()}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="field">
               <span>Amount</span>
-              <input name="amount" type="number" min="1" value={paymentForm.amount} onChange={updateForm(setPaymentForm)} required />
+              <Input name="amount" type="number" min="1" value={paymentForm.amount} onChange={updateForm(setPaymentForm)} required />
             </label>
             <label className="field">
               <span>Method</span>
-              <select name="paymentMethod" value={paymentForm.paymentMethod} onChange={updateForm(setPaymentForm)}>
+              <Select name="paymentMethod" value={paymentForm.paymentMethod} onChange={updateForm(setPaymentForm)}>
                 <option value="CASH">Cash</option>
                 <option value="UPI">UPI</option>
                 <option value="CARD">Card</option>
                 <option value="BANK_TRANSFER">Bank Transfer</option>
-              </select>
+              </Select>
             </label>
             <label className="field">
               <span>Reference No.</span>
-              <input name="referenceNumber" value={paymentForm.referenceNumber} onChange={updateForm(setPaymentForm)} />
+              <Input name="referenceNumber" value={paymentForm.referenceNumber} onChange={updateForm(setPaymentForm)} />
             </label>
             <label className="field field-wide">
               <span>Remarks</span>
-              <textarea name="remarks" value={paymentForm.remarks} onChange={updateForm(setPaymentForm)} rows="3" />
+              <Textarea name="remarks" value={paymentForm.remarks} onChange={updateForm(setPaymentForm)} rows="3" />
             </label>
             <div className="form-actions">
-              <button className="button button-primary" disabled={loadingForm === "payment"} type="submit">
+              <Button disabled={loadingForm === "payment"} type="submit">
                 {loadingForm === "payment" ? "Saving..." : "Record Payment"}
-              </button>
+              </Button>
             </div>
           </form>
         )}
         {message ? <div className="notice">{message}</div> : null}
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="panel">
-        <div className="page-head">
+      <Card className="panel">
+        <CardHeader className="page-head">
           <span className="eyebrow">Monthly Ledger</span>
-          <h2>Monthly fee check register</h2>
-          <p>Tick each month when the student's monthly class fee is received.</p>
-        </div>
+          <CardTitle>Monthly fee check register</CardTitle>
+          <CardDescription>Tick each month when the student's monthly class fee is received.</CardDescription>
+        </CardHeader>
+        <CardContent>
         <div className="toolbar toolbar-wide">
-          <select
+          <Select
             className="filter-input"
             onChange={(event) =>
               setLedgerFilters((current) => ({
@@ -804,8 +820,8 @@ export default function FeeManager({
                 {institution.name}
               </option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
             className="filter-input"
             onChange={(event) =>
               setLedgerFilters((current) => ({ ...current, classId: event.target.value }))
@@ -817,11 +833,11 @@ export default function FeeManager({
               .filter((item) => item.institutionId === ledgerFilters.institutionId)
               .map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name}{item.section ? ` - ${item.section}` : ""}
-                </option>
-              ))}
-          </select>
-          <input
+                    {item.name}{item.section ? ` - ${item.section}` : ""}
+                  </option>
+                ))}
+          </Select>
+          <Input
             className="filter-input"
             onChange={(event) =>
               setLedgerFilters((current) => ({ ...current, year: event.target.value }))
@@ -873,16 +889,18 @@ export default function FeeManager({
             </table>
           </div>
         )}
-      </section>
+        </CardContent>
+      </Card>
 
       <section className="page-grid">
-        <article className="panel">
-          <div className="page-head">
-            <h2>Fee structure register</h2>
-            <p>Reusable fee definitions grouped by campus.</p>
-          </div>
+        <Card className="panel">
+          <CardHeader className="page-head">
+            <CardTitle>Fee structure register</CardTitle>
+            <CardDescription>Reusable fee definitions grouped by campus.</CardDescription>
+          </CardHeader>
+          <CardContent>
           <div className="toolbar toolbar-wide">
-            <select
+            <Select
               className="filter-input"
               onChange={(event) => setInstitutionFilter(event.target.value)}
               value={institutionFilter}
@@ -890,11 +908,11 @@ export default function FeeManager({
               <option value="ALL">All institutions</option>
               {institutions.map((institution) => (
                 <option key={institution.id} value={institution.id}>
-                  {institution.name}
-                </option>
-              ))}
-            </select>
-            <select
+                {institution.name}
+              </option>
+            ))}
+            </Select>
+            <Select
               className="filter-input"
               onChange={(event) => setStudentFilter(event.target.value)}
               value={studentFilter}
@@ -905,13 +923,13 @@ export default function FeeManager({
                   {student.firstName} {student.lastName}
                 </option>
               ))}
-            </select>
+            </Select>
             <span className="stat-pill">{filteredInvoices.length} invoices</span>
           </div>
           {filteredStructures.length === 0 ? (
             <p className="empty">No fee structures created yet.</p>
           ) : (
-            <table className="table">
+            <Table className="table">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -928,30 +946,32 @@ export default function FeeManager({
                   <td>{structure.name}</td>
                   <td>{institutionMap[structure.institutionId] || "-"}</td>
                   <td>{structure.classId ? classMap[structure.classId] || "-" : "All classes"}</td>
-                  <td>{structure.frequency}</td>
+                  <td><Badge variant="secondary">{structure.frequency}</Badge></td>
                   <td>{Number(structure.amount).toLocaleString()}</td>
                   <td>
                     <div className="row-actions">
-                      <button className="button button-small" onClick={() => startStructureEdit(structure)} type="button">
+                      <Button size="sm" variant="outline" onClick={() => startStructureEdit(structure)} type="button">
                         Edit
-                      </button>
-                      <button className="button button-small button-danger" onClick={() => handleStructureDelete(structure.id)} type="button">
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleStructureDelete(structure.id)} type="button">
                         Delete
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
               ))}
               </tbody>
-            </table>
+            </Table>
           )}
-        </article>
+          </CardContent>
+        </Card>
 
-        <aside className="panel">
-          <div className="page-head">
-            <h2>Recent collections</h2>
-            <p>Latest payments received across students.</p>
-          </div>
+        <Card className="panel">
+          <CardHeader className="page-head">
+            <CardTitle>Recent collections</CardTitle>
+            <CardDescription>Latest payments received across students.</CardDescription>
+          </CardHeader>
+          <CardContent>
           {filteredPayments.length === 0 ? (
             <p className="empty">No payments recorded yet.</p>
           ) : (
@@ -962,26 +982,28 @@ export default function FeeManager({
                     <span>
                       {studentMap[payment.studentId] || "Student"} paid {Number(payment.amount).toLocaleString()} via {payment.paymentMethod}
                     </span>
-                    <button className="button button-small button-danger" onClick={() => handlePaymentDelete(payment.id)} type="button">
+                    <Button size="sm" variant="destructive" onClick={() => handlePaymentDelete(payment.id)} type="button">
                       Delete
-                    </button>
+                    </Button>
                   </div>
                 </li>
               ))}
             </ul>
           )}
-        </aside>
+          </CardContent>
+        </Card>
       </section>
 
-      <section className="panel">
-        <div className="page-head">
-          <h2>Invoice ledger</h2>
-          <p>Monitor pending, partial, and fully paid student invoices.</p>
-        </div>
+      <Card className="panel">
+        <CardHeader className="page-head">
+          <CardTitle>Invoice ledger</CardTitle>
+          <CardDescription>Monitor pending, partial, and fully paid student invoices.</CardDescription>
+        </CardHeader>
+        <CardContent>
         {filteredInvoices.length === 0 ? (
           <p className="empty">No invoices created yet.</p>
         ) : (
-          <table className="table">
+          <Table className="table">
             <thead>
               <tr>
                 <th>Title</th>
@@ -1003,23 +1025,24 @@ export default function FeeManager({
                   <td>{Number(invoice.netAmount).toLocaleString()}</td>
                   <td>{Number(invoice.totalPaid).toLocaleString()}</td>
                   <td>{Number(invoice.balance).toLocaleString()}</td>
-                  <td><span className="badge">{invoice.status}</span></td>
+                  <td><Badge>{invoice.status}</Badge></td>
                   <td>
                     <div className="row-actions">
-                      <button className="button button-small" onClick={() => startInvoiceEdit(invoice)} type="button">
+                      <Button size="sm" variant="outline" onClick={() => startInvoiceEdit(invoice)} type="button">
                         Edit
-                      </button>
-                      <button className="button button-small button-danger" onClick={() => handleInvoiceDelete(invoice.id)} type="button">
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleInvoiceDelete(invoice.id)} type="button">
                         Delete
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         )}
-      </section>
+        </CardContent>
+      </Card>
     </div>
   );
 }

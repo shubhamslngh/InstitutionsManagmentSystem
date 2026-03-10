@@ -2,6 +2,13 @@
 
 import { startTransition, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Badge } from "./ui/badge.js";
+import { Button } from "./ui/button.js";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card.js";
+import { Input } from "./ui/input.js";
+import { Select } from "./ui/select.js";
+import { Table } from "./ui/table.js";
+import { Textarea } from "./ui/textarea.js";
 
 const initialForm = {
   institutionId: "",
@@ -154,19 +161,20 @@ export default function StudentManager({
         </article>
       </section>
 
-      <section className="panel">
-        <div className="page-head">
+      <Card className="panel">
+        <CardHeader className="page-head">
           <span className="eyebrow">Admissions</span>
-          <h2>{editingId ? "Update student record" : "Register student"}</h2>
-          <p>Create student records and attach them to the correct school or college.</p>
-        </div>
+          <CardTitle>{editingId ? "Update student record" : "Register student"}</CardTitle>
+          <CardDescription>Create student records and attach them to the correct school or college.</CardDescription>
+        </CardHeader>
+        <CardContent>
         {institutions.length === 0 ? (
           <div className="notice">Add at least one institution before creating students.</div>
         ) : (
           <form className="form-grid" onSubmit={handleSubmit}>
             <label className="field">
               <span>Institution</span>
-              <select
+              <Select
                 name="institutionId"
                 value={form.institutionId}
                 onChange={updateField}
@@ -177,11 +185,11 @@ export default function StudentManager({
                     {institution.name}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="field">
               <span>Admission No.</span>
-              <input
+              <Input
                 name="admissionNumber"
                 value={form.admissionNumber}
                 onChange={updateField}
@@ -190,66 +198,66 @@ export default function StudentManager({
             </label>
             <label className="field">
               <span>Student&apos;s Name</span>
-              <input name="firstName" value={form.firstName} onChange={updateField} required />
+              <Input name="firstName" value={form.firstName} onChange={updateField} required />
             </label>
             <label className="field">
               <span>Mother&apos;s Name</span>
-              <input name="motherName" value={form.motherName} onChange={updateField} />
+              <Input name="motherName" value={form.motherName} onChange={updateField} />
             </label>
             <label className="field">
               <span>Father&apos;s Name</span>
-              <input name="fatherName" value={form.fatherName} onChange={updateField} />
+              <Input name="fatherName" value={form.fatherName} onChange={updateField} />
             </label>
             <label className="field">
               <span>Aadhaar No.</span>
-              <input name="aadhaarNumber" value={form.aadhaarNumber} onChange={updateField} />
+              <Input name="aadhaarNumber" value={form.aadhaarNumber} onChange={updateField} />
             </label>
             <label className="field">
               <span>Email</span>
-              <input name="email" type="email" value={form.email} onChange={updateField} />
+              <Input name="email" type="email" value={form.email} onChange={updateField} />
             </label>
             <label className="field">
               <span>Phone</span>
-              <input name="phone" value={form.phone} onChange={updateField} />
+              <Input name="phone" value={form.phone} onChange={updateField} />
             </label>
             <label className="field">
               <span>Date of Birth</span>
-              <input name="dob" type="date" value={form.dob} onChange={updateField} />
+              <Input name="dob" type="date" value={form.dob} onChange={updateField} />
             </label>
             <label className="field field-wide">
               <span>Address</span>
-              <textarea name="address" rows="3" value={form.address} onChange={updateField} />
+              <Textarea name="address" rows="3" value={form.address} onChange={updateField} />
             </label>
             <label className="field">
               <span>Course</span>
-              <input name="course" value={form.course} onChange={updateField} />
+              <Input name="course" value={form.course} onChange={updateField} />
             </label>
             <label className="field">
               <span>Class Group</span>
-              <select name="classId" value={form.classId} onChange={updateField}>
+              <Select name="classId" value={form.classId} onChange={updateField}>
                 <option value="">Select class</option>
                 {availableClasses.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}{item.section ? ` - ${item.section}` : ""}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="field">
               <span>Class Label</span>
-              <input name="className" value={form.className} onChange={updateField} />
+              <Input name="className" value={form.className} onChange={updateField} />
             </label>
             <label className="field">
               <span>Section</span>
-              <input name="section" value={form.section} onChange={updateField} />
+              <Input name="section" value={form.section} onChange={updateField} />
             </label>
             <div className="form-actions">
-              <button className="button button-primary" disabled={isSubmitting} type="submit">
+              <Button disabled={isSubmitting} type="submit">
                 {isSubmitting ? "Saving..." : editingId ? "Save Changes" : "Create Student"}
-              </button>
+              </Button>
               {editingId ? (
-                <button
-                  className="button button-muted"
+                <Button
+                  variant="secondary"
                   onClick={() => {
                     setEditingId(null);
                     setForm({ ...initialForm, institutionId: defaultInstitutionId });
@@ -257,27 +265,29 @@ export default function StudentManager({
                   type="button"
                 >
                   Cancel
-                </button>
+                </Button>
               ) : null}
             </div>
           </form>
         )}
         {message ? <div className="notice">{message}</div> : null}
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="panel">
-        <div className="page-head">
-          <h2>Student registry</h2>
-          <p>Students listed here are ready for fee assignment and payment collection.</p>
-        </div>
+      <Card className="panel">
+        <CardHeader className="page-head">
+          <CardTitle>Student registry</CardTitle>
+          <CardDescription>Students listed here are ready for fee assignment and payment collection.</CardDescription>
+        </CardHeader>
+        <CardContent>
         <div className="toolbar toolbar-wide">
-          <input
+          <Input
             className="filter-input"
             onChange={(event) => setSearchTerm(event.target.value)}
             placeholder="Search by admission no., name, class, or course"
             value={searchTerm}
           />
-          <select
+          <Select
             className="filter-input"
             onChange={(event) => setInstitutionFilter(event.target.value)}
             value={institutionFilter}
@@ -288,13 +298,13 @@ export default function StudentManager({
                 {institution.name}
               </option>
             ))}
-          </select>
+          </Select>
           <span className="stat-pill">{filteredStudents.length} students</span>
         </div>
         {filteredStudents.length === 0 ? (
           <p className="empty">No student records yet.</p>
         ) : (
-          <table className="table">
+          <Table className="table">
             <thead>
               <tr>
                 <th>Institution</th>
@@ -316,23 +326,24 @@ export default function StudentManager({
                   <td>{student.fatherName || student.motherName || "-"}</td>
                   <td>{student.classId ? classMap[student.classId] || student.className || "-" : student.className || "-"}</td>
                   <td>{student.phone || "-"}</td>
-                  <td><span className="badge">{student.status}</span></td>
+                  <td><Badge>{student.status}</Badge></td>
                   <td>
                     <div className="row-actions">
-                      <button className="button button-small" onClick={() => startEdit(student)} type="button">
+                      <Button size="sm" variant="outline" onClick={() => startEdit(student)} type="button">
                         Edit
-                      </button>
-                      <button className="button button-small button-danger" onClick={() => handleDelete(student.id)} type="button">
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => handleDelete(student.id)} type="button">
                         Delete
-                      </button>
+                      </Button>
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         )}
-      </section>
+        </CardContent>
+      </Card>
     </div>
   );
 }

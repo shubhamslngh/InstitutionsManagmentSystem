@@ -22,7 +22,16 @@ Full-stack Next.js app for managing multiple schools and colleges with PostgreSQ
 Create a `.env` file in the project root.
 
 ```env
-DATABASE_URL=postgresql://shubham:your_password@localhost:5432/mauryaschool
+DB_PROVIDER=postgres
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=mauryaschool
+DB_USER=shubham
+DB_PASSWORD=your_password
+DB_SSL=false
+
+# Optional override
+DATABASE_URL=
 HOST=127.0.0.1
 PORT=3000
 ```
@@ -35,7 +44,9 @@ npm run db:init
 npm run dev
 ```
 
-If your PostgreSQL password or database name is different, update `DATABASE_URL` in `.env`.
+If your PostgreSQL host, password, or database name is different, update the `DB_*` values in `.env`.
+
+This app currently supports PostgreSQL only. A phpMyAdmin/MySQL host cannot be used with the current `pg` database layer without a backend migration.
 
 The app runs on `http://localhost:3000`.
 

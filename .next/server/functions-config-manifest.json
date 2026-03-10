@@ -2,21 +2,21 @@
   "version": 1,
   "functions": {
     "/api/fees/assignments/from-class": {},
-    "/api/classes": {},
     "/api/fees/assignments/[feeInvoiceId]": {},
-    "/api/classes/[classId]": {},
-    "/api/fees/assignments/from-structure": {},
+    "/api/classes": {},
     "/api/fees/payments/[paymentId]": {},
-    "/api/fees/payments": {},
-    "/api/fees/assignments": {},
     "/api/fees/monthly-ledger": {},
-    "/api/health": {},
-    "/api/institutions": {},
-    "/api/students/[studentId]/fees": {},
+    "/api/fees/assignments": {},
+    "/api/classes/[classId]": {},
+    "/api/fees/payments": {},
     "/api/fees/structures/[feeStructureId]": {},
+    "/api/fees/assignments/from-structure": {},
     "/api/fees/structures": {},
+    "/api/health": {},
+    "/api/students/[studentId]/fees": {},
     "/api/institutions/[institutionId]": {},
     "/api/students/[studentId]": {},
-    "/api/students": {}
+    "/api/students": {},
+    "/api/institutions": {}
   }
 }

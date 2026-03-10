@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Badge } from "./ui/badge.js";
 
 const links = [
   { href: "/", label: "Overview" },
@@ -21,6 +22,9 @@ export default function AppShell({ eyebrow, title, description, children }) {
           <span className="sidebar-kicker">Maurya Softwares</span>
           <strong>Maurya School Management</strong>
           <p>Operations dashboard for institutions, classes, students, and finance.</p>
+          <Badge className="sidebar-badge" variant="secondary">
+            Multi-campus admin
+          </Badge>
         </div>
 
         <nav className="sidebar-nav">
