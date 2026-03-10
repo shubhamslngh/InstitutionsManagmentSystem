@@ -17,7 +17,18 @@ export const pool = mysql.createPool({
 });
 
 function normalizeQuery(text) {
-  return text.replace(/\$\d+/g, "?").replace(/\bTRUE\b/g, "TRUE").replace(/\bFALSE\b/g, "FALSE");
+  return text.replace(/\bTRUE\b/g, "TRUE").replace(/\bFALSE\b/g, "FALSE");
+}
+
+function prepareQuery(text, params = []) {
+  const normalizedText = normalizeQuery(text);
+  const orderedParams = [];
+  const sql = normalizedText.replace(/\$(\d+)/g, (_, index) => {
+    orderedParams.push(params[Number(index) - 1]);
+    return "?";
+  });
+
+  return { sql, params: orderedParams };
 }
 
 function mapResult(result) {
@@ -36,7 +47,8 @@ function mapResult(result) {
 }
 
 export async function query(text, params = []) {
-  const [result] = await pool.query(normalizeQuery(text), params);
+  const prepared = prepareQuery(text, params);
+  const [result] = await pool.query(prepared.sql, prepared.params);
   return mapResult(result);
 }
 
@@ -44,7 +56,8 @@ export async function withTransaction(handler) {
   const connection = await pool.getConnection();
   const client = {
     async query(text, params = []) {
-      const [result] = await connection.query(normalizeQuery(text), params);
+      const prepared = prepareQuery(text, params);
+      const [result] = await connection.query(prepared.sql, prepared.params);
       return mapResult(result);
     }
   };

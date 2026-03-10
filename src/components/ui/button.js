@@ -1,15 +1,17 @@
+import { Slot } from "@radix-ui/react-slot";
 import { cn } from "../../lib/utils.js";
+import { buttonVariants } from "./button.variants.js";
 
-export function Button({ className, variant = "default", size = "default", ...props }) {
+export function Button({ asChild = false, className, variant, size, type = "button", ...props }) {
+  const Comp = asChild ? Slot : "button";
+
   return (
-    <button
-      className={cn(
-        "ui-button",
-        variant !== "default" ? `ui-button-${variant}` : "",
-        size !== "default" ? `ui-button-${size}` : "",
-        className
-      )}
+    <Comp
+      className={cn(buttonVariants({ variant, size }), className)}
+      type={asChild ? undefined : type}
       {...props}
     />
   );
 }
+
+export { buttonVariants };

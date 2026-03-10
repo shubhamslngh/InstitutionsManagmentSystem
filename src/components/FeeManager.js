@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { Badge } from "./ui/badge.js";
 import { Button } from "./ui/button.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card.js";
+import { DatePicker } from "./ui/date-picker.js";
 import { Input } from "./ui/input.js";
 import { Select } from "./ui/select.js";
 import { Table } from "./ui/table.js";
 import { Textarea } from "./ui/textarea.js";
+import { formatDateForDisplay, formatDateForStorage } from "../lib/dateFormat.js";
 
 const structureDefaults = {
   institutionId: "",
@@ -167,9 +169,10 @@ export default function FeeManager({
         editingInvoiceId ? `/api/fees/assignments/${editingInvoiceId}` : "/api/fees/assignments",
         editingInvoiceId ? "PATCH" : "POST",
         {
-        ...invoiceForm,
-        grossAmount: Number(invoiceForm.grossAmount),
-        discountAmount: Number(invoiceForm.discountAmount || 0)
+          ...invoiceForm,
+          grossAmount: Number(invoiceForm.grossAmount),
+          discountAmount: Number(invoiceForm.discountAmount || 0),
+          dueDate: formatDateForStorage(invoiceForm.dueDate)
         }
       );
       setInvoices((current) =>
@@ -200,7 +203,8 @@ export default function FeeManager({
     try {
       const result = await submitJson("/api/fees/assignments/from-structure", "POST", {
         ...fromStructureForm,
-        discountAmount: Number(fromStructureForm.discountAmount || 0)
+        discountAmount: Number(fromStructureForm.discountAmount || 0),
+        dueDate: formatDateForStorage(fromStructureForm.dueDate)
       });
       setInvoices((current) => [result.data, ...current]);
       setMessage("Invoice created from fee structure.");
@@ -242,7 +246,11 @@ export default function FeeManager({
     setMessage(null);
 
     try {
-      const result = await submitJson("/api/fees/assignments/from-class", "POST", classBillingForm);
+      const result = await submitJson("/api/fees/assignments/from-class", "POST", {
+        ...classBillingForm,
+        dueDate: formatDateForStorage(classBillingForm.dueDate)
+      });
+
       setInvoices((current) => [...result.data.invoices, ...current]);
       setMessage(
         result.data.createdCount > 0
@@ -307,7 +315,7 @@ export default function FeeManager({
       title: invoice.title || "",
       grossAmount: String(invoice.grossAmount ?? ""),
       discountAmount: String(invoice.discountAmount ?? 0),
-      dueDate: invoice.dueDate ? String(invoice.dueDate).slice(0, 10) : "",
+      dueDate: formatDateForDisplay(invoice.dueDate),
       notes: invoice.notes || ""
     });
     setMessage(null);
@@ -596,12 +604,7 @@ export default function FeeManager({
             </label>
             <label className="field">
               <span>Due Date</span>
-              <Input
-                name="dueDate"
-                onChange={updateForm(setClassBillingForm)}
-                type="date"
-                value={classBillingForm.dueDate}
-              />
+              <DatePicker name="dueDate" onChange={updateForm(setClassBillingForm)} value={classBillingForm.dueDate} />
             </label>
             <label className="field field-wide">
               <span>Notes</span>
@@ -664,7 +667,7 @@ export default function FeeManager({
               </label>
               <label className="field">
                 <span>Due Date</span>
-                <Input name="dueDate" type="date" value={invoiceForm.dueDate} onChange={updateForm(setInvoiceForm)} />
+                <DatePicker name="dueDate" onChange={updateForm(setInvoiceForm)} value={invoiceForm.dueDate} />
               </label>
               <label className="field field-wide">
                 <span>Notes</span>
@@ -726,7 +729,7 @@ export default function FeeManager({
               </label>
               <label className="field">
                 <span>Due Date</span>
-                <Input name="dueDate" type="date" value={fromStructureForm.dueDate} onChange={updateForm(setFromStructureForm)} />
+                <DatePicker name="dueDate" onChange={updateForm(setFromStructureForm)} value={fromStructureForm.dueDate} />
               </label>
               <label className="field field-wide">
                 <span>Notes</span>

@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { Badge } from "./ui/badge.js";
 import { Button } from "./ui/button.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card.js";
+import { DatePicker } from "./ui/date-picker.js";
 import { Input } from "./ui/input.js";
 import { Select } from "./ui/select.js";
 import { Table } from "./ui/table.js";
 import { Textarea } from "./ui/textarea.js";
+import { formatDateForDisplay, formatDateForStorage } from "../lib/dateFormat.js";
 
 const initialForm = {
   institutionId: "",
@@ -46,9 +48,27 @@ export default function StudentManager({
   );
   const availableClasses = classes.filter((item) => item.institutionId === form.institutionId);
 
+  async function parseResponse(response) {
+    const raw = await response.text();
+
+    try {
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      throw new Error(
+        response.ok
+          ? "Received an invalid server response."
+          : "Server returned a non-JSON error response."
+      );
+    }
+  }
+
   function updateField(event) {
     const { name, value } = event.target;
-    setForm((current) => ({ ...current, [name]: value }));
+    setForm((current) => ({
+      ...current,
+      [name]: value,
+      ...(name === "institutionId" ? { classId: "" } : {})
+    }));
   }
 
   async function handleSubmit(event) {
@@ -58,14 +78,17 @@ export default function StudentManager({
 
     try {
       const response = await fetch(editingId ? `/api/students/${editingId}` : "/api/students", {
-        method: editingId ? "PATCH" : "POST",
+        method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(form)
+        body: JSON.stringify({
+          ...form,
+          dob: formatDateForStorage(form.dob)
+        })
       });
 
-      const result = await response.json();
+      const result = await parseResponse(response);
 
       if (!response.ok) {
         throw new Error(result.message || "Failed to save student.");
@@ -99,7 +122,7 @@ export default function StudentManager({
       email: student.email || "",
       phone: student.phone || "",
       address: student.address || "",
-      dob: student.dob ? String(student.dob).slice(0, 10) : "",
+      dob: formatDateForDisplay(student.dob),
       course: student.course || "",
       classId: student.classId || ""
     });
@@ -111,7 +134,7 @@ export default function StudentManager({
     try {
       const response = await fetch(`/api/students/${studentId}`, { method: "DELETE" });
       if (!response.ok) {
-        const result = await response.json();
+        const result = await parseResponse(response);
         throw new Error(result.message || "Failed to delete student.");
       }
       setStudents((current) => current.filter((item) => item.id !== studentId));
@@ -218,7 +241,7 @@ export default function StudentManager({
             </label>
             <label className="field">
               <span>Date of Birth</span>
-              <Input name="dob" type="date" value={form.dob} onChange={updateField} />
+              <DatePicker name="dob" value={form.dob} onChange={updateField} />
             </label>
             <label className="field field-wide">
               <span>Address</span>

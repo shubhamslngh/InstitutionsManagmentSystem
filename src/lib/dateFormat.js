@@ -1,0 +1,59 @@
+const displayFormatter = new Intl.DateTimeFormat("en-IN", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric"
+});
+
+export function formatDate(value, options) {
+  if (!value) {
+    return "NA";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "NA";
+  }
+
+  if (options) {
+    return new Intl.DateTimeFormat("en-IN", options).format(date);
+  }
+
+  return displayFormatter.format(date);
+}
+
+export function formatDateForDisplay(value) {
+  if (!value) {
+    return "";
+  }
+
+  const raw = String(value).slice(0, 10);
+  const [year, month, day] = raw.split("-");
+  if (!year || !month || !day) {
+    return "";
+  }
+
+  return `${day}/${month}/${year}`;
+}
+
+export function formatDateForStorage(value) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  const match = normalized.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (match) {
+    const [, day, month, year] = match;
+    return `${year}-${month}-${day}`;
+  }
+
+  return normalized;
+}
+
+export function formatDateInput(value) {
+  if (!value) {
+    return "";
+  }
+
+  return String(value).slice(0, 10);
+}
