@@ -6,6 +6,252 @@ import { mapRows, toCamelCaseRow } from "../utils/mappers.js";
 
 const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+function requireValidMonth(value, fieldName) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const month = Number(value);
+  if (Number.isNaN(month) || month < 1 || month > 12) {
+    throw createHttpError(400, `${fieldName} must be between 1 and 12.`);
+  }
+
+  return month;
+}
+
+function getSessionMonthSequence(startMonth, endMonth) {
+  if (!startMonth || !endMonth) {
+    return [];
+  }
+
+  const months = [];
+  let current = startMonth;
+
+  while (true) {
+    months.push(current);
+    if (current === endMonth) {
+      break;
+    }
+    current = current === 12 ? 1 : current + 1;
+  }
+
+  return months;
+}
+
+function getMonthlyStructureCoverage(structure, referenceDate = new Date()) {
+  const startMonth = Number(structure.sessionStartMonth || 0);
+  const endMonth = Number(structure.sessionEndMonth || 0);
+  const currentMonth = referenceDate.getMonth() + 1;
+
+  const sessionMonths = getSessionMonthSequence(startMonth, endMonth);
+  if (sessionMonths.length === 0) {
+    return {
+      monthsElapsed: currentMonth,
+      sessionMonths: []
+    };
+  }
+
+  const currentIndex = sessionMonths.indexOf(currentMonth);
+  return {
+    monthsElapsed: currentIndex >= 0 ? currentIndex + 1 : 0,
+    sessionMonths
+  };
+}
+
+function getInvoiceAmountFromStructure(structure, referenceDate = new Date()) {
+  const baseAmount = Number(structure.amount);
+  if (structure.frequency !== "MONTHLY") {
+    return {
+      grossAmount: baseAmount,
+      monthsElapsed: 1
+    };
+  }
+
+  const { monthsElapsed } = getMonthlyStructureCoverage(structure, referenceDate);
+  if (monthsElapsed <= 0) {
+    throw createHttpError(
+      400,
+      "Current month is outside the configured academic session for this monthly fee structure."
+    );
+  }
+
+  return {
+    grossAmount: baseAmount * monthsElapsed,
+    monthsElapsed
+  };
+}
+
+function getAcademicSessionMonths(structure, referenceDate = new Date()) {
+  const startMonth = Number(structure.sessionStartMonth || 0);
+  const endMonth = Number(structure.sessionEndMonth || 0);
+  const currentMonth = referenceDate.getMonth() + 1;
+  const currentYear = referenceDate.getFullYear();
+
+  if (!startMonth || !endMonth) {
+    return Array.from({ length: currentMonth }, (_, index) => ({
+      sessionYear: currentYear,
+      calendarYear: currentYear,
+      monthNumber: index + 1
+    }));
+  }
+
+  const wrapsYear = startMonth > endMonth;
+  let sessionStartYear = currentYear;
+
+  if (wrapsYear && currentMonth < startMonth) {
+    sessionStartYear = currentYear - 1;
+  }
+
+  if (!wrapsYear && currentMonth < startMonth) {
+    return [];
+  }
+
+  const sessionMonths = [];
+  let month = startMonth;
+  let calendarYear = sessionStartYear;
+
+  while (true) {
+    sessionMonths.push({
+      sessionYear: sessionStartYear,
+      calendarYear,
+      monthNumber: month
+    });
+
+    if (month === endMonth) {
+      break;
+    }
+
+    month = month === 12 ? 1 : month + 1;
+    if (month === 1) {
+      calendarYear += 1;
+    }
+  }
+
+  const currentIndex = sessionMonths.findIndex(
+    (item) => item.calendarYear === currentYear && item.monthNumber === currentMonth
+  );
+
+  return currentIndex >= 0 ? sessionMonths.slice(0, currentIndex + 1) : [];
+}
+
+function getCurrentSessionYear(structure, referenceDate = new Date()) {
+  const startMonth = Number(structure.sessionStartMonth || 0);
+  const endMonth = Number(structure.sessionEndMonth || 0);
+  const currentMonth = referenceDate.getMonth() + 1;
+  const currentYear = referenceDate.getFullYear();
+
+  if (!startMonth || !endMonth) {
+    return currentYear;
+  }
+
+  if (startMonth > endMonth && currentMonth < startMonth) {
+    return currentYear - 1;
+  }
+
+  return currentYear;
+}
+
+function getSessionMonthsForYear(structure, sessionYear) {
+  const startMonth = Number(structure.sessionStartMonth || 0);
+  const endMonth = Number(structure.sessionEndMonth || 0);
+
+  if (!startMonth || !endMonth) {
+    return monthLabels.map((label, index) => ({
+      sessionYear,
+      calendarYear: sessionYear,
+      monthNumber: index + 1,
+      label: `${label} ${sessionYear}`
+    }));
+  }
+
+  const sessionMonths = [];
+  let month = startMonth;
+  let calendarYear = sessionYear;
+
+  while (true) {
+    sessionMonths.push({
+      sessionYear,
+      calendarYear,
+      monthNumber: month,
+      label: `${monthLabels[month - 1]} ${calendarYear}`
+    });
+
+    if (month === endMonth) {
+      break;
+    }
+
+    month = month === 12 ? 1 : month + 1;
+    if (month === 1) {
+      calendarYear += 1;
+    }
+  }
+
+  return sessionMonths;
+}
+
+function getMonthlyInvoiceTitle(structure, monthNumber, calendarYear) {
+  return `${structure.name} - ${monthLabels[monthNumber - 1]} ${calendarYear}`;
+}
+
+async function getMonthlyInvoiceBySession(studentId, feeStructureId, ledgerYear, monthNumber, client) {
+  const result = await client.query(
+    `
+      SELECT fi.id
+      FROM fee_invoices fi
+      WHERE fi.student_id = $1
+        AND fi.fee_structure_id = $2
+        AND fi.ledger_year = $3
+        AND fi.month_number = $4
+    `,
+    [studentId, feeStructureId, ledgerYear, monthNumber]
+  );
+
+  if (result.rowCount === 0) {
+    return null;
+  }
+
+  return getFeeInvoiceById(result.rows[0].id, client);
+}
+
+function getDueDateForMonth(structure, calendarYear, monthNumber) {
+  if (!structure.dueDayOfMonth) {
+    return null;
+  }
+
+  const day = String(structure.dueDayOfMonth).padStart(2, "0");
+  const month = String(monthNumber).padStart(2, "0");
+  return `${calendarYear}-${month}-${day}`;
+}
+
+async function ensureMonthlyInvoiceForMonth({ student, structure, sessionYear, calendarYear, monthNumber, client }) {
+  const existingInvoice = await getMonthlyInvoiceBySession(
+    student.id,
+    structure.id,
+    sessionYear,
+    monthNumber,
+    client
+  );
+
+  if (existingInvoice) {
+    return existingInvoice;
+  }
+
+  return createFeeInvoiceWithClient(
+    {
+      studentId: student.id,
+      feeStructureId: structure.id,
+      ledgerYear: sessionYear,
+      monthNumber,
+      title: getMonthlyInvoiceTitle(structure, monthNumber, calendarYear),
+      grossAmount: Number(structure.amount),
+      discountAmount: 0,
+      dueDate: getDueDateForMonth(structure, calendarYear, monthNumber),
+      notes: structure.notes
+    },
+    client
+  );
+}
+
 async function findStudent(studentId, client = { query }) {
   const result = await client.query(
     `
@@ -67,6 +313,11 @@ async function getFeeInvoiceById(feeInvoiceId, client = { query }) {
 export async function createFeeStructure(payload) {
   requireFields(payload, ["institutionId", "name", "amount"]);
   requirePositiveAmount(payload.amount, "amount");
+  const sessionStartMonth = requireValidMonth(payload.sessionStartMonth, "sessionStartMonth");
+  const sessionEndMonth = requireValidMonth(payload.sessionEndMonth, "sessionEndMonth");
+  if ((sessionStartMonth && !sessionEndMonth) || (!sessionStartMonth && sessionEndMonth)) {
+    throw createHttpError(400, "Both sessionStartMonth and sessionEndMonth are required together.");
+  }
   const feeStructureId = newId();
 
   const institutionResult = await query("SELECT id FROM institutions WHERE id = $1", [
@@ -99,10 +350,12 @@ export async function createFeeStructure(payload) {
         frequency,
         applicable_for,
         due_day_of_month,
+        session_start_month,
+        session_end_month,
         is_active,
         notes
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     `,
     [
       feeStructureId,
@@ -113,6 +366,8 @@ export async function createFeeStructure(payload) {
       payload.frequency?.trim() || "ONE_TIME",
       payload.applicableFor?.trim() || "ALL",
       payload.dueDayOfMonth || null,
+      sessionStartMonth,
+      sessionEndMonth,
       payload.isActive ?? true,
       payload.notes?.trim() || null
     ]
@@ -156,6 +411,17 @@ export async function updateFeeStructure(feeStructureId, payload) {
   const currentStructure = await getFeeStructureById(feeStructureId);
   const amount = payload.amount !== undefined ? Number(payload.amount) : Number(currentStructure.amount);
   requirePositiveAmount(amount, "amount");
+  const sessionStartMonth =
+    payload.sessionStartMonth !== undefined
+      ? requireValidMonth(payload.sessionStartMonth, "sessionStartMonth")
+      : currentStructure.sessionStartMonth;
+  const sessionEndMonth =
+    payload.sessionEndMonth !== undefined
+      ? requireValidMonth(payload.sessionEndMonth, "sessionEndMonth")
+      : currentStructure.sessionEndMonth;
+  if ((sessionStartMonth && !sessionEndMonth) || (!sessionStartMonth && sessionEndMonth)) {
+    throw createHttpError(400, "Both sessionStartMonth and sessionEndMonth are required together.");
+  }
   const institutionId = payload.institutionId ?? currentStructure.institutionId;
 
   const institutionResult = await query("SELECT id FROM institutions WHERE id = $1", [institutionId]);
@@ -184,8 +450,10 @@ export async function updateFeeStructure(feeStructureId, payload) {
         frequency = $6,
         applicable_for = $7,
         due_day_of_month = $8,
-        is_active = $9,
-        notes = $10,
+        session_start_month = $9,
+        session_end_month = $10,
+        is_active = $11,
+        notes = $12,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
     `,
@@ -200,6 +468,8 @@ export async function updateFeeStructure(feeStructureId, payload) {
       payload.dueDayOfMonth !== undefined
         ? payload.dueDayOfMonth || null
         : currentStructure.dueDayOfMonth,
+      sessionStartMonth,
+      sessionEndMonth,
       payload.isActive ?? currentStructure.isActive,
       payload.notes?.trim() ?? currentStructure.notes
     ]
@@ -237,6 +507,8 @@ async function createFeeInvoiceWithClient(payload, client) {
         institution_id,
         student_id,
         fee_structure_id,
+        ledger_year,
+        month_number,
         title,
         gross_amount,
         discount_amount,
@@ -245,13 +517,15 @@ async function createFeeInvoiceWithClient(payload, client) {
         status,
         notes
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING', $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PENDING', $12)
     `,
     [
       feeInvoiceId,
       student.institutionId,
       student.id,
       payload.feeStructureId || null,
+      payload.ledgerYear || null,
+      payload.monthNumber || null,
       payload.title.trim(),
       payload.grossAmount,
       discountAmount,
@@ -349,6 +623,30 @@ export async function assignFeeStructureToStudent(payload) {
     if (structure.classId && structure.classId !== student.classId) {
       throw createHttpError(400, "Fee structure is not attached to the student's class.");
     }
+    if (structure.frequency === "MONTHLY") {
+      const sessionYear = getCurrentSessionYear(structure);
+      const sessionMonths = getSessionMonthsForYear(structure, sessionYear);
+      const invoices = [];
+
+      for (const sessionMonth of sessionMonths) {
+        invoices.push(
+          await ensureMonthlyInvoiceForMonth({
+            student,
+            structure,
+            sessionYear: sessionMonth.sessionYear,
+            calendarYear: sessionMonth.calendarYear,
+            monthNumber: sessionMonth.monthNumber,
+            client
+          })
+        );
+      }
+
+      return {
+        createdCount: invoices.length,
+        invoices
+      };
+    }
+
     return createFeeInvoiceWithClient(
       {
         studentId: student.id,
@@ -364,10 +662,10 @@ export async function assignFeeStructureToStudent(payload) {
   });
 }
 
-export async function assignClassFeesToStudent(payload) {
+export async function assignClassFeesToStudent(payload, existingClient = null) {
   requireFields(payload, ["studentId"]);
 
-  return withTransaction(async (client) => {
+  const runner = async (client) => {
     const student = await findStudent(payload.studentId, client);
 
     if (!student.classId) {
@@ -379,15 +677,15 @@ export async function assignClassFeesToStudent(payload) {
         SELECT *
         FROM fee_structures
         WHERE institution_id = $1
-          AND class_id = $2
           AND is_active = TRUE
+          AND (class_id = $2 OR class_id IS NULL)
         ORDER BY created_at ASC
       `,
       [student.institutionId, student.classId]
     );
 
     if (structuresResult.rowCount === 0) {
-      throw createHttpError(404, "No fee structures found for the student's class.");
+      throw createHttpError(404, "No active fee structures found for the student's class.");
     }
 
     const createdInvoices = [];
@@ -406,28 +704,131 @@ export async function assignClassFeesToStudent(payload) {
       );
 
       if (existingInvoiceResult.rowCount > 0) {
-        continue;
+        if (structure.frequency !== "MONTHLY") {
+          continue;
+        }
       }
 
-      const invoice = await createFeeInvoiceWithClient(
-        {
-          studentId: student.id,
-          feeStructureId: structure.id,
-          title: structure.name,
-          grossAmount: Number(structure.amount),
-          discountAmount: 0,
-          dueDate: payload.dueDate || null,
-          notes: payload.notes || structure.notes
-        },
-        client
-      );
+      if (structure.frequency === "MONTHLY") {
+        const sessionYear = getCurrentSessionYear(structure);
+        const sessionMonths = getSessionMonthsForYear(structure, sessionYear);
 
-      createdInvoices.push(invoice);
+        for (const sessionMonth of sessionMonths) {
+          const existingMonthlyInvoice = await getMonthlyInvoiceBySession(
+            student.id,
+            structure.id,
+            sessionMonth.sessionYear,
+            sessionMonth.monthNumber,
+            client
+          );
+
+          if (existingMonthlyInvoice) {
+            continue;
+          }
+
+          const invoice = await ensureMonthlyInvoiceForMonth({
+            student,
+            structure,
+            sessionYear: sessionMonth.sessionYear,
+            calendarYear: sessionMonth.calendarYear,
+            monthNumber: sessionMonth.monthNumber,
+            client
+          });
+
+          createdInvoices.push(invoice);
+        }
+      } else {
+        const invoice = await createFeeInvoiceWithClient(
+          {
+            studentId: student.id,
+            feeStructureId: structure.id,
+            title: structure.name,
+            grossAmount: Number(structure.amount),
+            discountAmount: 0,
+            dueDate: payload.dueDate || null,
+            notes: payload.notes || structure.notes
+          },
+          client
+        );
+
+        createdInvoices.push(invoice);
+      }
     }
 
     return {
       student,
       createdCount: createdInvoices.length,
+      invoices: createdInvoices
+    };
+  };
+
+  if (existingClient) {
+    return runner(existingClient);
+  }
+
+  return withTransaction(runner);
+}
+
+export async function assignFeesToWholeClass(payload) {
+  requireFields(payload, ["classId"]);
+
+  return withTransaction(async (client) => {
+    const classResult = await client.query(
+      `
+        SELECT c.*, i.name AS institution_name
+        FROM academic_classes c
+        JOIN institutions i ON i.id = c.institution_id
+        WHERE c.id = $1
+      `,
+      [payload.classId]
+    );
+
+    if (classResult.rowCount === 0) {
+      throw createHttpError(404, "Class not found.");
+    }
+
+    const academicClass = toCamelCaseRow(classResult.rows[0]);
+    const studentsResult = await client.query(
+      `
+        SELECT id
+        FROM students
+        WHERE class_id = $1
+        ORDER BY first_name ASC, last_name ASC
+      `,
+      [academicClass.id]
+    );
+
+    if (studentsResult.rowCount === 0) {
+      throw createHttpError(404, "No students are assigned to this class.");
+    }
+
+    const createdInvoices = [];
+    let createdCount = 0;
+    let skippedCount = 0;
+
+    for (const studentRow of studentsResult.rows) {
+      const result = await assignClassFeesToStudent(
+        {
+          studentId: studentRow.id,
+          dueDate: payload.dueDate || null,
+          notes: payload.notes || null
+        },
+        client
+      );
+
+      createdInvoices.push(...result.invoices);
+      createdCount += result.createdCount;
+
+      if (result.createdCount === 0) {
+        skippedCount += 1;
+      }
+    }
+
+    return {
+      academicClass,
+      studentCount: studentsResult.rowCount,
+      createdCount,
+      skippedCount,
       invoices: createdInvoices
     };
   });
@@ -477,11 +878,11 @@ export async function listFeeAssignments(filters = {}) {
   }));
 }
 
-export async function recordFeePayment(payload) {
+export async function recordFeePayment(payload, existingClient = null) {
   requireFields(payload, ["feeInvoiceId", "amount"]);
   requirePositiveAmount(payload.amount, "amount");
 
-  return withTransaction(async (client) => {
+  const runner = async (client) => {
     const invoice = await getFeeInvoiceById(payload.feeInvoiceId, client);
     const paymentId = newId();
 
@@ -491,29 +892,33 @@ export async function recordFeePayment(payload) {
 
     await client.query(
       `
-        INSERT INTO fee_payments (
-          id,
-          fee_invoice_id,
-          institution_id,
-          student_id,
-          amount,
-          payment_date,
-          payment_method,
-          reference_number,
-          remarks
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      `,
-      [
-        paymentId,
-        payload.feeInvoiceId,
-        invoice.institutionId,
-        invoice.studentId,
-        payload.amount,
-        payload.paymentDate || new Date().toISOString(),
-        payload.paymentMethod?.trim() || "CASH",
-        payload.referenceNumber?.trim() || null,
-        payload.remarks?.trim() || null
+      INSERT INTO fee_payments (
+        id,
+        fee_invoice_id,
+        institution_id,
+        student_id,
+        amount,
+        ledger_year,
+        month_number,
+        payment_date,
+        payment_method,
+        reference_number,
+        remarks
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `,
+    [
+      paymentId,
+      payload.feeInvoiceId,
+      invoice.institutionId,
+      invoice.studentId,
+      payload.amount,
+      payload.ledgerYear || null,
+      payload.monthNumber || null,
+      payload.paymentDate || new Date().toISOString(),
+      payload.paymentMethod?.trim() || "CASH",
+      payload.referenceNumber?.trim() || null,
+      payload.remarks?.trim() || null
       ]
     );
 
@@ -526,13 +931,19 @@ export async function recordFeePayment(payload) {
     ]);
 
     return {
-      payment: await getPaymentById(paymentId),
+      payment: await getPaymentById(paymentId, client),
       invoice: {
         ...updatedInvoice,
         status: nextStatus
       }
     };
-  });
+  };
+
+  if (existingClient) {
+    return runner(existingClient);
+  }
+
+  return withTransaction(runner);
 }
 
 export async function getStudentFeeSummary(studentId) {
@@ -579,8 +990,8 @@ export async function listPayments(filters = {}) {
   return mapRows(result.rows);
 }
 
-export async function getPaymentById(paymentId) {
-  const result = await query("SELECT * FROM fee_payments WHERE id = $1", [paymentId]);
+export async function getPaymentById(paymentId, client = { query }) {
+  const result = await client.query("SELECT * FROM fee_payments WHERE id = $1", [paymentId]);
   if (result.rowCount === 0) {
     throw createHttpError(404, "Payment not found.");
   }
@@ -684,12 +1095,14 @@ export async function getMonthlyFeeLedger(filters = {}) {
         feeStructureId: structure.id,
         feeName: structure.name,
         amount: Number(structure.amount),
-        months: monthLabels.map((label, index) => {
-          const monthNumber = index + 1;
-          const entry = paidMap.get(`${student.id}:${structure.id}:${monthNumber}`);
+        sessionStartMonth: structure.sessionStartMonth || null,
+        sessionEndMonth: structure.sessionEndMonth || null,
+        months: getSessionMonthsForYear(structure, year).map((month) => {
+          const entry = paidMap.get(`${student.id}:${structure.id}:${month.monthNumber}`);
           return {
-            monthNumber,
-            label,
+            monthNumber: month.monthNumber,
+            label: month.label,
+            calendarYear: month.calendarYear,
             isPaid: Boolean(entry?.isPaid),
             paidOn: entry?.paidOn || null
           };
@@ -808,6 +1221,121 @@ export async function toggleMonthlyLedgerMonth(payload) {
       [ledgerId]
     );
 
+    const sessionMonth = getSessionMonthsForYear(structure, year).find(
+      (item) => item.sessionYear === year && item.monthNumber === monthNumber
+    );
+
+    if (!sessionMonth) {
+      throw createHttpError(400, "This month is outside the configured academic session.");
+    }
+
+    const invoice = await ensureMonthlyInvoiceForMonth({
+      student,
+      structure,
+      sessionYear: sessionMonth.sessionYear,
+      calendarYear: sessionMonth.calendarYear,
+      monthNumber: sessionMonth.monthNumber,
+      client
+    });
+
+    if (nextPaid) {
+      const paymentResult = await client.query(
+        `
+          SELECT id
+          FROM fee_payments
+          WHERE fee_invoice_id = $1
+            AND ledger_year = $2
+            AND month_number = $3
+        `,
+        [invoice.id, year, monthNumber]
+      );
+
+      if (paymentResult.rowCount === 0) {
+        await recordFeePayment(
+          {
+            feeInvoiceId: invoice.id,
+            amount: Number(structure.amount),
+            ledgerYear: year,
+            monthNumber,
+            paymentMethod: "LEDGER",
+            remarks: `Monthly ledger payment for ${monthLabels[monthNumber - 1]} ${year}`
+          },
+          client
+        );
+      }
+    } else if (invoice) {
+      const paymentResult = await client.query(
+        `
+          SELECT id
+          FROM fee_payments
+          WHERE fee_invoice_id = $1
+            AND ledger_year = $2
+            AND month_number = $3
+        `,
+        [invoice.id, year, monthNumber]
+      );
+
+      if (paymentResult.rowCount > 0) {
+        await client.query("DELETE FROM fee_payments WHERE id = $1", [paymentResult.rows[0].id]);
+      }
+    }
+    const updatedInvoice = await getFeeInvoiceById(invoice.id, client);
+    const invoiceStatus =
+      Number(updatedInvoice.balance) <= 0
+        ? "PAID"
+        : Number(updatedInvoice.totalPaid) > 0
+          ? "PARTIALLY_PAID"
+          : "PENDING";
+
+    await client.query(
+      "UPDATE fee_invoices SET status = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+      [invoice.id, invoiceStatus]
+    );
+
     return toCamelCaseRow(result.rows[0]);
+  });
+}
+
+export async function deleteMonthlyFeeLedger(payload) {
+  requireFields(payload, ["studentId", "feeStructureId", "year"]);
+
+  return withTransaction(async (client) => {
+    await client.query(
+      `
+        DELETE fp
+        FROM fee_payments fp
+        JOIN fee_invoices fi ON fi.id = fp.fee_invoice_id
+        WHERE fi.student_id = $1
+          AND fi.fee_structure_id = $2
+          AND fi.ledger_year = $3
+      `,
+      [payload.studentId, payload.feeStructureId, payload.year]
+    );
+
+    await client.query(
+      `
+        DELETE FROM fee_invoices
+        WHERE student_id = $1
+          AND fee_structure_id = $2
+          AND ledger_year = $3
+      `,
+      [payload.studentId, payload.feeStructureId, payload.year]
+    );
+
+    await client.query(
+      `
+        DELETE FROM monthly_fee_ledgers
+        WHERE student_id = $1
+          AND fee_structure_id = $2
+          AND ledger_year = $3
+      `,
+      [payload.studentId, payload.feeStructureId, payload.year]
+    );
+
+    return {
+      studentId: payload.studentId,
+      feeStructureId: payload.feeStructureId,
+      year: payload.year
+    };
   });
 }

@@ -4,13 +4,34 @@ const displayFormatter = new Intl.DateTimeFormat("en-IN", {
   year: "numeric"
 });
 
+function parseDateValue(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const raw = String(value).trim();
+  const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/);
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export function formatDate(value, options) {
   if (!value) {
     return "NA";
   }
 
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
+  const date = parseDateValue(value);
+  if (!date) {
     return "NA";
   }
 

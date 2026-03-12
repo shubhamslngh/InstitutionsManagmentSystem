@@ -21,6 +21,7 @@ export function StudentsPageClient({
 }) {
   const [students, setStudents] = useState(initialStudents);
   const [institutionFilter, setInstitutionFilter] = useState(defaultInstitutionId);
+  const [classFilter, setClassFilter] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
 
@@ -28,11 +29,53 @@ export function StudentsPageClient({
     setInstitutionFilter(defaultInstitutionId);
   }, [defaultInstitutionId]);
 
+  useEffect(() => {
+    setClassFilter("");
+  }, [institutionFilter]);
+
   const filteredStudents = useMemo(() => {
-    return institutionFilter
-      ? students.filter((item) => item.institutionId === institutionFilter)
-      : students;
+    return students.filter((item) => {
+      const matchesInstitution = institutionFilter
+        ? item.institutionId === institutionFilter
+        : true;
+      const normalizedClass = item.className || "Unassigned";
+      const matchesClass = classFilter ? normalizedClass === classFilter : true;
+      return matchesInstitution && matchesClass;
+    });
+  }, [classFilter, institutionFilter, students]);
+
+  const classOptions = useMemo(() => {
+    const visibleClasses = students
+      .filter((item) => (institutionFilter ? item.institutionId === institutionFilter : true))
+      .map((item) => item.className || "Unassigned");
+
+    return Array.from(new Set(visibleClasses)).sort((left, right) =>
+      left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" })
+    );
   }, [institutionFilter, students]);
+
+  const classWiseStudents = useMemo(
+    () =>
+      [...filteredStudents].sort((left, right) => {
+        const leftClass = left.className || "Unassigned";
+        const rightClass = right.className || "Unassigned";
+        const classCompare = leftClass.localeCompare(rightClass, undefined, {
+          numeric: true,
+          sensitivity: "base"
+        });
+
+        if (classCompare !== 0) {
+          return classCompare;
+        }
+
+        return `${left.firstName} ${left.lastName || ""}`.localeCompare(
+          `${right.firstName} ${right.lastName || ""}`,
+          undefined,
+          { sensitivity: "base" }
+        );
+      }),
+    [filteredStudents]
+  );
 
   async function handleDelete(id) {
     const response = await fetch(`/api/students/${id}`, { method: "DELETE" });
@@ -153,12 +196,20 @@ export function StudentsPageClient({
       </div>
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex w-full max-w-xs items-center gap-3">
+        <div className="flex w-full flex-col gap-3 md:max-w-2xl md:flex-row">
           <Select value={institutionFilter} onChange={(event) => setInstitutionFilter(event.target.value)}>
             <option value="">All Institutions</option>
             {institutions.map((institution) => (
               <option key={institution.id} value={institution.id}>
                 {institution.name}
+              </option>
+            ))}
+          </Select>
+          <Select value={classFilter} onChange={(event) => setClassFilter(event.target.value)}>
+            <option value="">All Classes</option>
+            {classOptions.map((className) => (
+              <option key={className} value={className}>
+                {className}
               </option>
             ))}
           </Select>
@@ -172,7 +223,7 @@ export function StudentsPageClient({
       <DataTable
         title="Student Registry"
         columns={columns}
-        data={filteredStudents}
+        data={classWiseStudents}
         emptyTitle={initialError ? "Unable to load students" : "No students available"}
         emptyDescription={
           initialError ||

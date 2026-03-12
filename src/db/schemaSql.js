@@ -49,10 +49,25 @@ CREATE TABLE IF NOT EXISTS students (
     FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
   CONSTRAINT fk_students_class
     FOREIGN KEY (class_id) REFERENCES academic_classes(id) ON DELETE SET NULL,
-  UNIQUE KEY uq_students_institution_admission (institution_id, admission_number),
   KEY idx_students_institution_id (institution_id),
   KEY idx_students_class_id (class_id)
 ) ENGINE=InnoDB;
+
+SET @students_admission_index_exists := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'students'
+    AND INDEX_NAME = 'uq_students_institution_admission'
+);
+SET @drop_students_admission_index_sql := IF(
+  @students_admission_index_exists > 0,
+  'ALTER TABLE students DROP INDEX uq_students_institution_admission',
+  'SELECT 1'
+);
+PREPARE drop_students_admission_index_stmt FROM @drop_students_admission_index_sql;
+EXECUTE drop_students_admission_index_stmt;
+DEALLOCATE PREPARE drop_students_admission_index_stmt;
 
 CREATE TABLE IF NOT EXISTS fee_structures (
   id CHAR(36) PRIMARY KEY,
@@ -63,6 +78,8 @@ CREATE TABLE IF NOT EXISTS fee_structures (
   frequency VARCHAR(50) NOT NULL DEFAULT 'ONE_TIME',
   applicable_for VARCHAR(120) NOT NULL DEFAULT 'ALL',
   due_day_of_month INT NULL,
+  session_start_month INT NULL,
+  session_end_month INT NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   notes TEXT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -75,11 +92,45 @@ CREATE TABLE IF NOT EXISTS fee_structures (
   KEY idx_fee_structures_class_id (class_id)
 ) ENGINE=InnoDB;
 
+SET @fee_structures_has_session_start_month := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'fee_structures'
+    AND COLUMN_NAME = 'session_start_month'
+);
+SET @fee_structures_add_session_start_month_sql := IF(
+  @fee_structures_has_session_start_month = 0,
+  'ALTER TABLE fee_structures ADD COLUMN session_start_month INT NULL AFTER due_day_of_month',
+  'SELECT 1'
+);
+PREPARE fee_structures_add_session_start_month_stmt FROM @fee_structures_add_session_start_month_sql;
+EXECUTE fee_structures_add_session_start_month_stmt;
+DEALLOCATE PREPARE fee_structures_add_session_start_month_stmt;
+
+SET @fee_structures_has_session_end_month := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'fee_structures'
+    AND COLUMN_NAME = 'session_end_month'
+);
+SET @fee_structures_add_session_end_month_sql := IF(
+  @fee_structures_has_session_end_month = 0,
+  'ALTER TABLE fee_structures ADD COLUMN session_end_month INT NULL AFTER session_start_month',
+  'SELECT 1'
+);
+PREPARE fee_structures_add_session_end_month_stmt FROM @fee_structures_add_session_end_month_sql;
+EXECUTE fee_structures_add_session_end_month_stmt;
+DEALLOCATE PREPARE fee_structures_add_session_end_month_stmt;
+
 CREATE TABLE IF NOT EXISTS fee_invoices (
   id CHAR(36) PRIMARY KEY,
   institution_id CHAR(36) NOT NULL,
   student_id CHAR(36) NOT NULL,
   fee_structure_id CHAR(36) NULL,
+  ledger_year INT NULL,
+  month_number INT NULL,
   title VARCHAR(255) NOT NULL,
   gross_amount DECIMAL(12, 2) NOT NULL,
   discount_amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
@@ -96,8 +147,57 @@ CREATE TABLE IF NOT EXISTS fee_invoices (
   CONSTRAINT fk_fee_invoices_structure
     FOREIGN KEY (fee_structure_id) REFERENCES fee_structures(id) ON DELETE SET NULL,
   KEY idx_fee_invoices_student_id (student_id),
-  KEY idx_fee_invoices_institution_id (institution_id)
+  KEY idx_fee_invoices_institution_id (institution_id),
+  UNIQUE KEY uq_fee_invoices_ledger_month (student_id, fee_structure_id, ledger_year, month_number)
 ) ENGINE=InnoDB;
+
+SET @fee_invoices_has_ledger_year := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'fee_invoices'
+    AND COLUMN_NAME = 'ledger_year'
+);
+SET @fee_invoices_add_ledger_year_sql := IF(
+  @fee_invoices_has_ledger_year = 0,
+  'ALTER TABLE fee_invoices ADD COLUMN ledger_year INT NULL AFTER fee_structure_id',
+  'SELECT 1'
+);
+PREPARE fee_invoices_add_ledger_year_stmt FROM @fee_invoices_add_ledger_year_sql;
+EXECUTE fee_invoices_add_ledger_year_stmt;
+DEALLOCATE PREPARE fee_invoices_add_ledger_year_stmt;
+
+SET @fee_invoices_has_month_number := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'fee_invoices'
+    AND COLUMN_NAME = 'month_number'
+);
+SET @fee_invoices_add_month_number_sql := IF(
+  @fee_invoices_has_month_number = 0,
+  'ALTER TABLE fee_invoices ADD COLUMN month_number INT NULL AFTER ledger_year',
+  'SELECT 1'
+);
+PREPARE fee_invoices_add_month_number_stmt FROM @fee_invoices_add_month_number_sql;
+EXECUTE fee_invoices_add_month_number_stmt;
+DEALLOCATE PREPARE fee_invoices_add_month_number_stmt;
+
+SET @fee_invoices_has_ledger_unique_index := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'fee_invoices'
+    AND INDEX_NAME = 'uq_fee_invoices_ledger_month'
+);
+SET @fee_invoices_add_ledger_unique_index_sql := IF(
+  @fee_invoices_has_ledger_unique_index = 0,
+  'ALTER TABLE fee_invoices ADD UNIQUE KEY uq_fee_invoices_ledger_month (student_id, fee_structure_id, ledger_year, month_number)',
+  'SELECT 1'
+);
+PREPARE fee_invoices_add_ledger_unique_index_stmt FROM @fee_invoices_add_ledger_unique_index_sql;
+EXECUTE fee_invoices_add_ledger_unique_index_stmt;
+DEALLOCATE PREPARE fee_invoices_add_ledger_unique_index_stmt;
 
 CREATE TABLE IF NOT EXISTS fee_payments (
   id CHAR(36) PRIMARY KEY,
@@ -105,6 +205,8 @@ CREATE TABLE IF NOT EXISTS fee_payments (
   institution_id CHAR(36) NOT NULL,
   student_id CHAR(36) NOT NULL,
   amount DECIMAL(12, 2) NOT NULL,
+  ledger_year INT NULL,
+  month_number INT NULL,
   payment_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   payment_method VARCHAR(50) NOT NULL DEFAULT 'CASH',
   reference_number VARCHAR(255) NULL,
@@ -118,6 +220,54 @@ CREATE TABLE IF NOT EXISTS fee_payments (
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
   KEY idx_fee_payments_invoice_id (fee_invoice_id)
 ) ENGINE=InnoDB;
+
+SET @fee_payments_has_ledger_year := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'fee_payments'
+    AND COLUMN_NAME = 'ledger_year'
+);
+SET @fee_payments_add_ledger_year_sql := IF(
+  @fee_payments_has_ledger_year = 0,
+  'ALTER TABLE fee_payments ADD COLUMN ledger_year INT NULL AFTER amount',
+  'SELECT 1'
+);
+PREPARE fee_payments_add_ledger_year_stmt FROM @fee_payments_add_ledger_year_sql;
+EXECUTE fee_payments_add_ledger_year_stmt;
+DEALLOCATE PREPARE fee_payments_add_ledger_year_stmt;
+
+SET @fee_payments_has_month_number := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'fee_payments'
+    AND COLUMN_NAME = 'month_number'
+);
+SET @fee_payments_add_month_number_sql := IF(
+  @fee_payments_has_month_number = 0,
+  'ALTER TABLE fee_payments ADD COLUMN month_number INT NULL AFTER ledger_year',
+  'SELECT 1'
+);
+PREPARE fee_payments_add_month_number_stmt FROM @fee_payments_add_month_number_sql;
+EXECUTE fee_payments_add_month_number_stmt;
+DEALLOCATE PREPARE fee_payments_add_month_number_stmt;
+
+SET @fee_payments_has_ledger_unique_index := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'fee_payments'
+    AND INDEX_NAME = 'uq_fee_payments_ledger_month'
+);
+SET @fee_payments_add_ledger_unique_index_sql := IF(
+  @fee_payments_has_ledger_unique_index = 0,
+  'ALTER TABLE fee_payments ADD UNIQUE KEY uq_fee_payments_ledger_month (fee_invoice_id, ledger_year, month_number)',
+  'SELECT 1'
+);
+PREPARE fee_payments_add_ledger_unique_index_stmt FROM @fee_payments_add_ledger_unique_index_sql;
+EXECUTE fee_payments_add_ledger_unique_index_stmt;
+DEALLOCATE PREPARE fee_payments_add_ledger_unique_index_stmt;
 
 CREATE TABLE IF NOT EXISTS monthly_fee_ledgers (
   id CHAR(36) PRIMARY KEY,

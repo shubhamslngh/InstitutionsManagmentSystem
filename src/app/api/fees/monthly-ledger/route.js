@@ -1,5 +1,9 @@
 import { ensureSchema } from "../../../../db/ensureSchema.js";
-import { getMonthlyFeeLedger, toggleMonthlyLedgerMonth } from "../../../../services/feeService.js";
+import {
+  deleteMonthlyFeeLedger,
+  getMonthlyFeeLedger,
+  toggleMonthlyLedgerMonth
+} from "../../../../services/feeService.js";
 import { failure, success } from "../../../../utils/api.js";
 
 export const runtime = "nodejs";
@@ -25,6 +29,16 @@ export async function POST(request) {
     await ensureSchema();
     const body = await request.json();
     return success(await toggleMonthlyLedgerMonth(body));
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    await ensureSchema();
+    const body = await request.json();
+    return success(await deleteMonthlyFeeLedger(body));
   } catch (error) {
     return failure(error);
   }
