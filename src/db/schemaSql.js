@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS students (
   id CHAR(36) PRIMARY KEY,
   institution_id CHAR(36) NOT NULL,
   admission_number VARCHAR(120) NOT NULL,
+  category VARCHAR(50) NULL,
   first_name VARCHAR(255) NOT NULL,
   last_name VARCHAR(255) NOT NULL DEFAULT '',
   mother_name VARCHAR(255) NULL,
@@ -52,6 +53,22 @@ CREATE TABLE IF NOT EXISTS students (
   KEY idx_students_institution_id (institution_id),
   KEY idx_students_class_id (class_id)
 ) ENGINE=InnoDB;
+
+SET @students_has_category := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'students'
+    AND COLUMN_NAME = 'category'
+);
+SET @students_add_category_sql := IF(
+  @students_has_category = 0,
+  'ALTER TABLE students ADD COLUMN category VARCHAR(50) NULL AFTER admission_number',
+  'SELECT 1'
+);
+PREPARE students_add_category_stmt FROM @students_add_category_sql;
+EXECUTE students_add_category_stmt;
+DEALLOCATE PREPARE students_add_category_stmt;
 
 SET @students_admission_index_exists := (
   SELECT COUNT(1)
@@ -126,6 +143,7 @@ DEALLOCATE PREPARE fee_structures_add_session_end_month_stmt;
 
 CREATE TABLE IF NOT EXISTS fee_invoices (
   id CHAR(36) PRIMARY KEY,
+  receipt_number VARCHAR(40) NULL,
   institution_id CHAR(36) NOT NULL,
   student_id CHAR(36) NOT NULL,
   fee_structure_id CHAR(36) NULL,
@@ -146,10 +164,36 @@ CREATE TABLE IF NOT EXISTS fee_invoices (
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
   CONSTRAINT fk_fee_invoices_structure
     FOREIGN KEY (fee_structure_id) REFERENCES fee_structures(id) ON DELETE SET NULL,
+  UNIQUE KEY uq_fee_invoices_receipt_number (receipt_number),
   KEY idx_fee_invoices_student_id (student_id),
   KEY idx_fee_invoices_institution_id (institution_id),
   UNIQUE KEY uq_fee_invoices_ledger_month (student_id, fee_structure_id, ledger_year, month_number)
 ) ENGINE=InnoDB;
+
+SET @fee_invoices_has_receipt_number := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'fee_invoices'
+    AND COLUMN_NAME = 'receipt_number'
+);
+SET @fee_invoices_add_receipt_number_sql := IF(
+  @fee_invoices_has_receipt_number = 0,
+  'ALTER TABLE fee_invoices ADD COLUMN receipt_number VARCHAR(40) NULL AFTER id',
+  'SELECT 1'
+);
+PREPARE fee_invoices_add_receipt_number_stmt FROM @fee_invoices_add_receipt_number_sql;
+EXECUTE fee_invoices_add_receipt_number_stmt;
+DEALLOCATE PREPARE fee_invoices_add_receipt_number_stmt;
+
+UPDATE fee_invoices
+SET receipt_number = CONCAT(
+  'REC-',
+  DATE_FORMAT(COALESCE(created_at, CURRENT_TIMESTAMP), '%Y%m%d'),
+  '-',
+  UPPER(LEFT(REPLACE(id, '-', ''), 6))
+)
+WHERE receipt_number IS NULL OR receipt_number = '';
 
 SET @fee_invoices_has_ledger_year := (
   SELECT COUNT(1)
@@ -182,6 +226,22 @@ SET @fee_invoices_add_month_number_sql := IF(
 PREPARE fee_invoices_add_month_number_stmt FROM @fee_invoices_add_month_number_sql;
 EXECUTE fee_invoices_add_month_number_stmt;
 DEALLOCATE PREPARE fee_invoices_add_month_number_stmt;
+
+SET @fee_invoices_has_receipt_number_unique_index := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'fee_invoices'
+    AND INDEX_NAME = 'uq_fee_invoices_receipt_number'
+);
+SET @fee_invoices_add_receipt_number_unique_index_sql := IF(
+  @fee_invoices_has_receipt_number_unique_index = 0,
+  'ALTER TABLE fee_invoices ADD UNIQUE KEY uq_fee_invoices_receipt_number (receipt_number)',
+  'SELECT 1'
+);
+PREPARE fee_invoices_add_receipt_number_unique_index_stmt FROM @fee_invoices_add_receipt_number_unique_index_sql;
+EXECUTE fee_invoices_add_receipt_number_unique_index_stmt;
+DEALLOCATE PREPARE fee_invoices_add_receipt_number_unique_index_stmt;
 
 SET @fee_invoices_has_ledger_unique_index := (
   SELECT COUNT(1)

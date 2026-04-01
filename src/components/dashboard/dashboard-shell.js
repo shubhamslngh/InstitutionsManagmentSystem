@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Building2,
   ChevronFirst,
@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Breadcrumb } from "../ui/breadcrumb.js";
 import { Button } from "../ui/button.js";
+import { Card, CardContent } from "../ui/card.js";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,6 +53,9 @@ export function DashboardShell({ children, institutions = [] }) {
   const searchParams = useSearchParams();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [startFlowOpen, setStartFlowOpen] = useState(false);
+  const [startFlowDismissed, setStartFlowDismissed] = useState(false);
+  const currentInstitutionId = searchParams.get("institutionId") || "";
 
   const breadcrumbItems = useMemo(() => {
     const parts = pathname.split("/").filter(Boolean);
@@ -68,6 +72,21 @@ export function DashboardShell({ children, institutions = [] }) {
     ];
   }, [pathname]);
 
+  const preservedNavigation = useMemo(() => {
+    return navigation.map((item) => {
+      const params = new URLSearchParams();
+      if (currentInstitutionId) {
+        params.set("institutionId", currentInstitutionId);
+      }
+
+      const queryString = params.toString();
+      return {
+        ...item,
+        href: queryString ? `${item.href}?${queryString}` : item.href
+      };
+    });
+  }, [currentInstitutionId]);
+
   function handleInstitutionChange(value) {
     const params = new URLSearchParams(searchParams.toString());
     if (value) {
@@ -80,10 +99,76 @@ export function DashboardShell({ children, institutions = [] }) {
     router.push(queryString ? `${pathname}?${queryString}` : pathname);
   }
 
-  const currentInstitutionId = searchParams.get("institutionId") || "";
+  useEffect(() => {
+    if (currentInstitutionId) {
+      setStartFlowDismissed(false);
+      setStartFlowOpen(false);
+      return;
+    }
+
+    setStartFlowOpen(!startFlowDismissed && institutions.length > 0);
+  }, [currentInstitutionId, institutions.length, startFlowDismissed]);
+
+  function handleStartInstitutionSelect(institutionId) {
+    handleInstitutionChange(institutionId);
+    setStartFlowOpen(false);
+  }
+
+  function handleContinueAllInstitutions() {
+    setStartFlowDismissed(true);
+    setStartFlowOpen(false);
+    handleInstitutionChange("");
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {startFlowOpen ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4">
+          <Card className="w-full max-w-3xl shadow-xl">
+            <CardContent className="space-y-6 p-6">
+              <div className="space-y-2 text-center">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                  Start Flow
+                </p>
+                <h2 className="text-2xl font-semibold tracking-tight">Select Institution</h2>
+                <p className="text-sm text-muted-foreground">
+                  Choose an institution before entering the dashboard so only the required data is loaded.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {institutions.map((institution) => (
+                  <button
+                    className="rounded-md border border-border bg-card p-4 text-left transition-colors hover:border-primary hover:bg-blue-50"
+                    key={institution.id}
+                    onClick={() => handleStartInstitutionSelect(institution.id)}
+                    type="button"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-md bg-blue-50 p-2 text-primary">
+                        <Building2 className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium">{institution.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {institution.type} {institution.code ? `• ${institution.code}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex justify-center">
+                <Button onClick={handleContinueAllInstitutions} type="button" variant="outline">
+                  Continue With All Institutions
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
       <div className="flex min-h-screen">
         <aside
           className={cn(
@@ -104,9 +189,9 @@ export function DashboardShell({ children, institutions = [] }) {
               </Button>
             </div>
             <nav className="flex-1 space-y-1 p-3">
-              {navigation.map((item) => {
+              {preservedNavigation.map((item) => {
                 const Icon = item.icon;
-                const active = pathname === item.href;
+                const active = pathname === item.href.split("?")[0];
 
                 return (
                   <Link
@@ -143,9 +228,9 @@ export function DashboardShell({ children, institutions = [] }) {
           )}
         >
           <nav className="space-y-1 pt-14">
-            {navigation.map((item) => {
+            {preservedNavigation.map((item) => {
               const Icon = item.icon;
-              const active = pathname === item.href;
+              const active = pathname === item.href.split("?")[0];
 
               return (
                 <Link

@@ -1,11 +1,21 @@
 import { ensureSchema } from "../../../../../db/ensureSchema.js";
 import {
   deleteFeeInvoice,
+  getFeeInvoiceReceiptDetails,
   updateFeeInvoice
 } from "../../../../../services/feeService.js";
 import { failure, noContent, success } from "../../../../../utils/api.js";
 
 export const runtime = "nodejs";
+
+export async function GET(request, context) {
+  try {
+    await ensureSchema();
+    return success(await getFeeInvoiceReceiptDetails(context.params.feeInvoiceId));
+  } catch (error) {
+    return failure(error);
+  }
+}
 
 export async function PATCH(request, context) {
   try {

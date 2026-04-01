@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, Plus, Users } from "lucide-react";
+import { ArrowUpDown, IndianRupee, Plus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button.js";
 import { MetricCard } from "./metric-card.js";
@@ -11,6 +11,7 @@ import { DataTable } from "../tables/data-table.js";
 import { StudentFormDialog } from "../forms/student-form-dialog.js";
 import { ConfirmDialog } from "./confirm-dialog.js";
 import { formatDate } from "../../lib/dateFormat.js";
+import { StudentFeesDialog } from "./student-fees-dialog.js";
 
 export function StudentsPageClient({
   initialStudents,
@@ -24,6 +25,9 @@ export function StudentsPageClient({
   const [classFilter, setClassFilter] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
+  const [feesDialogOpen, setFeesDialogOpen] = useState(false);
+  const [feesStudent, setFeesStudent] = useState(null);
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
 
   useEffect(() => {
     setInstitutionFilter(defaultInstitutionId);
@@ -33,12 +37,20 @@ export function StudentsPageClient({
     setClassFilter("");
   }, [institutionFilter]);
 
+  function getClassFilterLabel(student) {
+    if (!student.className) {
+      return "Unassigned";
+    }
+
+    return student.section ? `${student.className} - ${student.section}` : student.className;
+  }
+
   const filteredStudents = useMemo(() => {
     return students.filter((item) => {
       const matchesInstitution = institutionFilter
         ? item.institutionId === institutionFilter
         : true;
-      const normalizedClass = item.className || "Unassigned";
+      const normalizedClass = getClassFilterLabel(item);
       const matchesClass = classFilter ? normalizedClass === classFilter : true;
       return matchesInstitution && matchesClass;
     });
@@ -47,7 +59,7 @@ export function StudentsPageClient({
   const classOptions = useMemo(() => {
     const visibleClasses = students
       .filter((item) => (institutionFilter ? item.institutionId === institutionFilter : true))
-      .map((item) => item.className || "Unassigned");
+      .map((item) => getClassFilterLabel(item));
 
     return Array.from(new Set(visibleClasses)).sort((left, right) =>
       left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" })
@@ -68,6 +80,16 @@ export function StudentsPageClient({
           return classCompare;
         }
 
+        const admissionCompare = String(left.admissionNumber || "").localeCompare(
+          String(right.admissionNumber || ""),
+          undefined,
+          { numeric: true, sensitivity: "base" }
+        );
+
+        if (admissionCompare !== 0) {
+          return admissionCompare;
+        }
+
         return `${left.firstName} ${left.lastName || ""}`.localeCompare(
           `${right.firstName} ${right.lastName || ""}`,
           undefined,
@@ -86,7 +108,27 @@ export function StudentsPageClient({
     }
 
     setStudents((current) => current.filter((item) => item.id !== id));
+    setSelectedStudentIds((current) => current.filter((item) => item !== id));
     toast.success("Student deleted.");
+  }
+
+  async function handleBulkDelete() {
+    const deletedIds = await Promise.all(
+      selectedStudentIds.map(async (id) => {
+        const response = await fetch(`/api/students/${id}`, { method: "DELETE" });
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(result.message || "Failed to delete selected students.");
+        }
+
+        return id;
+      })
+    );
+
+    setStudents((current) => current.filter((item) => !deletedIds.includes(item.id)));
+    setSelectedStudentIds([]);
+    toast.success(`${deletedIds.length} student(s) deleted.`);
   }
 
   function handleSuccess(nextStudent) {
@@ -98,10 +140,46 @@ export function StudentsPageClient({
 
       return [nextStudent, ...current];
     });
+    setSelectedStudentIds((current) => current.filter((item) => item !== nextStudent.id));
     setEditingStudent(null);
   }
 
+  function toggleStudentSelection(studentId) {
+    setSelectedStudentIds((current) =>
+      current.includes(studentId)
+        ? current.filter((item) => item !== studentId)
+        : [...current, studentId]
+    );
+  }
+
+  function toggleAllStudentSelection() {
+    setSelectedStudentIds((current) =>
+      current.length === classWiseStudents.length ? [] : classWiseStudents.map((student) => student.id)
+    );
+  }
+
   const columns = [
+    {
+      id: "select",
+      meta: { label: "Select" },
+      enableHiding: false,
+      header: () => (
+        <input
+          aria-label="Select all students"
+          checked={classWiseStudents.length > 0 && selectedStudentIds.length === classWiseStudents.length}
+          onChange={toggleAllStudentSelection}
+          type="checkbox"
+        />
+      ),
+      cell: ({ row }) => (
+        <input
+          aria-label={`Select student ${row.original.firstName} ${row.original.lastName || ""}`}
+          checked={selectedStudentIds.includes(row.original.id)}
+          onChange={() => toggleStudentSelection(row.original.id)}
+          type="checkbox"
+        />
+      )
+    },
     {
       accessorKey: "admissionNumber",
       meta: { label: "Admission" },
@@ -136,6 +214,18 @@ export function StudentsPageClient({
       cell: ({ row }) => row.original.className || "Unassigned"
     },
     {
+      accessorKey: "section",
+      meta: { label: "Section" },
+      header: "Section",
+      cell: ({ row }) => row.original.section || "NA"
+    },
+    {
+      accessorKey: "category",
+      meta: { label: "Category" },
+      header: "Category",
+      cell: ({ row }) => row.original.category || "NA"
+    },
+    {
       accessorKey: "dob",
       meta: { label: "DOB" },
       header: "DOB",
@@ -158,9 +248,22 @@ export function StudentsPageClient({
             size="sm"
             variant="outline"
             onClick={() => {
+              setFeesStudent(row.original);
+              setFeesDialogOpen(true);
+            }}
+            type="button"
+          >
+            <IndianRupee className="h-4 w-4" />
+            Fees
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
               setEditingStudent(row.original);
               setDialogOpen(true);
             }}
+            type="button"
           >
             Edit
           </Button>
@@ -168,7 +271,7 @@ export function StudentsPageClient({
             description={`Delete ${row.original.firstName} ${row.original.lastName || ""} from the student registry?`}
             onConfirm={() => handleDelete(row.original.id)}
           >
-            <Button size="sm" variant="destructive">
+            <Button size="sm" type="button" variant="destructive">
               Delete
             </Button>
           </ConfirmDialog>
@@ -224,6 +327,18 @@ export function StudentsPageClient({
         title="Student Registry"
         columns={columns}
         data={classWiseStudents}
+        actions={
+          selectedStudentIds.length > 0 ? (
+            <ConfirmDialog
+              description={`Delete ${selectedStudentIds.length} selected student(s)?`}
+              onConfirm={handleBulkDelete}
+            >
+              <Button type="button" variant="destructive">
+                Delete Selected ({selectedStudentIds.length})
+              </Button>
+            </ConfirmDialog>
+          ) : null
+        }
         emptyTitle={initialError ? "Unable to load students" : "No students available"}
         emptyDescription={
           initialError ||
@@ -245,6 +360,17 @@ export function StudentsPageClient({
         classes={classes}
         defaultInstitutionId={institutionFilter || defaultInstitutionId || institutions[0]?.id || ""}
         onSuccess={handleSuccess}
+      />
+
+      <StudentFeesDialog
+        open={feesDialogOpen}
+        onOpenChange={(nextOpen) => {
+          setFeesDialogOpen(nextOpen);
+          if (!nextOpen) {
+            setFeesStudent(null);
+          }
+        }}
+        student={feesStudent}
       />
     </div>
   );

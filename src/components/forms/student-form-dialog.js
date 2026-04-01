@@ -27,25 +27,64 @@ import { Select } from "../ui/select.js";
 import { Textarea } from "../ui/textarea.js";
 import { formatDateInput } from "../../lib/dateFormat.js";
 
+const studentCategoryOptions = [
+  "GENERAL",
+  "OBC",
+  "SC",
+  "ST",
+  "EWS",
+  "MINORITY"
+];
+
+const optionalTrimmedString = z.string().transform((value) => value.trim());
+const optionalNameField = optionalTrimmedString.refine(
+  (value) => value === "" || /^[A-Za-z][A-Za-z\s.'-]{1,}$/.test(value),
+  "Enter a valid name."
+);
+const optionalAadhaarField = optionalTrimmedString.refine(
+  (value) => value === "" || /^\d{12}$/.test(value),
+  "Aadhaar number must be exactly 12 digits."
+);
+const optionalPhoneField = optionalTrimmedString.refine(
+  (value) => value === "" || /^\d{10}$/.test(value),
+  "Phone number must be exactly 10 digits."
+);
+const optionalDateField = optionalTrimmedString.refine((value) => {
+  if (value === "") {
+    return true;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return parsed <= today;
+}, "Date of birth cannot be in the future.");
+
 const studentSchema = z.object({
   institutionId: z.string().min(1, "Institution is required."),
-  admissionNumber: z.string().min(1, "Admission number is required."),
-  firstName: z.string().min(2, "Student name is required."),
-  lastName: z.string().optional(),
-  motherName: z.string().optional(),
-  fatherName: z.string().optional(),
-  aadhaarNumber: z.string().optional(),
-  email: z.string().email("Enter a valid email address.").or(z.literal("")),
-  phone: z.string().optional(),
-  address: z.string().optional(),
-  dob: z.string().optional(),
-  course: z.string().optional(),
+  admissionNumber: z.string().trim().min(1, "Admission number is required."),
+  category: z.string().refine((value) => value === "" || studentCategoryOptions.includes(value), "Select a valid category."),
+  firstName: optionalNameField.refine((value) => value.length >= 2, "Student name is required."),
+  lastName: optionalNameField,
+  motherName: optionalNameField,
+  fatherName: optionalNameField,
+  aadhaarNumber: optionalAadhaarField,
+  email: z.string().trim().email("Enter a valid email address.").or(z.literal("")),
+  phone: optionalPhoneField,
+  address: optionalTrimmedString,
+  dob: optionalDateField,
+  course: optionalTrimmedString,
   classId: z.string().optional()
 });
 
 const defaultValues = {
   institutionId: "",
   admissionNumber: "",
+  category: "",
   firstName: "",
   lastName: "",
   motherName: "",
@@ -63,6 +102,7 @@ function normalizeStudentValues(values) {
   return {
     ...defaultValues,
     ...values,
+    category: values?.category ?? "",
     lastName: values?.lastName ?? "",
     motherName: values?.motherName ?? "",
     fatherName: values?.fatherName ?? "",
@@ -161,6 +201,7 @@ export function StudentFormDialog({
             {[
               ["institutionId", "Institution"],
               ["admissionNumber", "Admission Number"],
+              ["category", "Category"],
               ["firstName", "First Name"],
               ["lastName", "Last Name"],
               ["motherName", "Mother Name"],
@@ -184,6 +225,15 @@ export function StudentFormDialog({
                           {institutions.map((institution) => (
                             <option key={institution.id} value={institution.id}>
                               {institution.name}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : name === "category" ? (
+                        <Select {...field}>
+                          <option value="">Select Category</option>
+                          {studentCategoryOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
                             </option>
                           ))}
                         </Select>

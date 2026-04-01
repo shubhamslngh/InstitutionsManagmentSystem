@@ -6,6 +6,22 @@ import { mapRows, toCamelCaseRow } from "../utils/mappers.js";
 
 const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+async function generateReceiptNumber(client) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const now = new Date();
+    const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+    const randomPart = Math.floor(1000 + Math.random() * 9000);
+    const receiptNumber = `REC-${datePart}-${randomPart}`;
+    const existingResult = await client.query("SELECT id FROM fee_invoices WHERE receipt_number = $1", [receiptNumber]);
+
+    if (existingResult.rowCount === 0) {
+      return receiptNumber;
+    }
+  }
+
+  throw createHttpError(500, "Unable to generate a unique receipt number.");
+}
+
 function requireValidMonth(value, fieldName) {
   if (value === null || value === undefined || value === "") {
     return null;
@@ -310,6 +326,97 @@ async function getFeeInvoiceById(feeInvoiceId, client = { query }) {
   };
 }
 
+function formatAcademicYearLabel(structure, ledgerYear) {
+  const year = Number(ledgerYear || 0);
+  if (!year) {
+    return "NA";
+  }
+
+  const startMonth = Number(structure?.sessionStartMonth || 0);
+  const endMonth = Number(structure?.sessionEndMonth || 0);
+  const wrapsYear = startMonth && endMonth && startMonth > endMonth;
+
+  return wrapsYear ? `${year}-${year + 1}` : String(year);
+}
+
+export async function getFeeInvoiceReceiptDetails(feeInvoiceId) {
+  const invoice = await getFeeInvoiceById(feeInvoiceId);
+  const student = await findStudent(invoice.studentId);
+
+  let structure = null;
+  if (invoice.feeStructureId) {
+    const structureResult = await query("SELECT * FROM fee_structures WHERE id = $1", [invoice.feeStructureId]);
+    structure = structureResult.rowCount > 0 ? toCamelCaseRow(structureResult.rows[0]) : null;
+  }
+
+  let months = [];
+  if (structure?.frequency === "MONTHLY" && invoice.ledgerYear) {
+    const sessionMonths = getSessionMonthsForYear(structure, Number(invoice.ledgerYear));
+    const ledgerResult = await query(
+      `
+        SELECT month_number, is_paid, paid_on
+        FROM monthly_fee_ledgers
+        WHERE student_id = $1
+          AND fee_structure_id = $2
+          AND ledger_year = $3
+      `,
+      [invoice.studentId, invoice.feeStructureId, invoice.ledgerYear]
+    );
+
+    const paidMap = new Map(
+      ledgerResult.rows.map((row) => [
+        Number(row.month_number),
+        {
+          isPaid: Boolean(row.is_paid),
+          paidOn: row.paid_on || null
+        }
+      ])
+    );
+
+    months = sessionMonths.map((month) => {
+      const paidMonth = paidMap.get(month.monthNumber);
+      return {
+        monthNumber: month.monthNumber,
+        label: month.label,
+        calendarYear: month.calendarYear,
+        isPaid: Boolean(paidMonth?.isPaid),
+        paidOn: paidMonth?.paidOn || null,
+        isCurrentInvoiceMonth: Number(invoice.monthNumber) === Number(month.monthNumber)
+      };
+    });
+  }
+
+  return {
+    invoice,
+    student: {
+      id: student.id,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      admissionNumber: student.admissionNumber,
+      fatherName: student.fatherName,
+      motherName: student.motherName,
+      phone: student.phone,
+      className: student.academicClassName || student.className,
+      section: student.academicClassSection || student.section
+    },
+    institution: {
+      name: student.institutionName,
+      type: student.institutionType
+    },
+    feeStructure: structure
+      ? {
+          id: structure.id,
+          name: structure.name,
+          frequency: structure.frequency,
+          sessionStartMonth: structure.sessionStartMonth,
+          sessionEndMonth: structure.sessionEndMonth
+        }
+      : null,
+    academicYear: formatAcademicYearLabel(structure, invoice.ledgerYear),
+    months
+  };
+}
+
 export async function createFeeStructure(payload) {
   requireFields(payload, ["institutionId", "name", "amount"]);
   requirePositiveAmount(payload.amount, "amount");
@@ -487,6 +594,7 @@ async function createFeeInvoiceWithClient(payload, client) {
   requireFields(payload, ["studentId", "title", "grossAmount"]);
   requirePositiveAmount(payload.grossAmount, "grossAmount");
   const feeInvoiceId = newId();
+  const receiptNumber = await generateReceiptNumber(client);
 
   const discountAmount = Number(payload.discountAmount || 0);
   if (discountAmount < 0) {
@@ -504,6 +612,7 @@ async function createFeeInvoiceWithClient(payload, client) {
     `
       INSERT INTO fee_invoices (
         id,
+        receipt_number,
         institution_id,
         student_id,
         fee_structure_id,
@@ -517,10 +626,11 @@ async function createFeeInvoiceWithClient(payload, client) {
         status,
         notes
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PENDING', $12)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'PENDING', $13)
     `,
     [
       feeInvoiceId,
+      receiptNumber,
       student.institutionId,
       student.id,
       payload.feeStructureId || null,
@@ -862,7 +972,11 @@ export async function listFeeAssignments(filters = {}) {
         GROUP BY fee_invoice_id
       ) payments ON payments.fee_invoice_id = fi.id
       ${whereClause}
-      ORDER BY fi.created_at DESC
+      ORDER BY
+        CASE WHEN fi.ledger_year IS NULL OR fi.month_number IS NULL THEN 1 ELSE 0 END ASC,
+        fi.ledger_year ASC,
+        fi.month_number ASC,
+        fi.created_at ASC
     `,
     params
   );
@@ -1072,6 +1186,33 @@ export async function getMonthlyFeeLedger(filters = {}) {
       toCamelCaseRow(row)
     ])
   );
+  const invoicesResult = await query(
+    `
+      SELECT
+        fi.*,
+        COALESCE(payments.total_paid, 0) AS total_paid,
+        fi.net_amount - COALESCE(payments.total_paid, 0) AS balance
+      FROM fee_invoices fi
+      LEFT JOIN (
+        SELECT fee_invoice_id, SUM(amount) AS total_paid
+        FROM fee_payments
+        GROUP BY fee_invoice_id
+      ) payments ON payments.fee_invoice_id = fi.id
+      WHERE fi.institution_id = $1
+        AND fi.ledger_year = $2
+        AND fi.month_number IS NOT NULL
+    `,
+    [filters.institutionId, year]
+  );
+  const invoiceMap = new Map(
+    invoicesResult.rows.map((row) => {
+      const invoice = toCamelCaseRow(row);
+      return [
+        `${invoice.studentId}:${invoice.feeStructureId}:${invoice.monthNumber}`,
+        invoice
+      ];
+    })
+  );
 
   const rows = [];
   for (const studentRow of studentsResult.rows) {
@@ -1099,10 +1240,17 @@ export async function getMonthlyFeeLedger(filters = {}) {
         sessionEndMonth: structure.sessionEndMonth || null,
         months: getSessionMonthsForYear(structure, year).map((month) => {
           const entry = paidMap.get(`${student.id}:${structure.id}:${month.monthNumber}`);
+          const invoice = invoiceMap.get(`${student.id}:${structure.id}:${month.monthNumber}`);
           return {
             monthNumber: month.monthNumber,
             label: month.label,
             calendarYear: month.calendarYear,
+            invoiceId: invoice?.id || null,
+            grossAmount: invoice ? Number(invoice.grossAmount) : Number(structure.amount),
+            discountAmount: invoice ? Number(invoice.discountAmount) : 0,
+            netAmount: invoice ? Number(invoice.netAmount) : Number(structure.amount),
+            totalPaid: invoice ? Number(invoice.totalPaid) : 0,
+            balance: invoice ? Number(invoice.balance) : Number(structure.amount),
             isPaid: Boolean(entry?.isPaid),
             paidOn: entry?.paidOn || null
           };
@@ -1251,10 +1399,15 @@ export async function toggleMonthlyLedgerMonth(payload) {
       );
 
       if (paymentResult.rowCount === 0) {
+        const payableAmount = Number(invoice.balance || 0);
+        if (payableAmount <= 0) {
+          throw createHttpError(400, "This invoice is already fully paid.");
+        }
+
         await recordFeePayment(
           {
             feeInvoiceId: invoice.id,
-            amount: Number(structure.amount),
+            amount: payableAmount,
             ledgerYear: year,
             monthNumber,
             paymentMethod: "LEDGER",

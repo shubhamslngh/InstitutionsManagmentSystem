@@ -4,7 +4,7 @@ import { OverviewPageClient } from "../../components/dashboard/overview-page-cli
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }) {
   let snapshot = {
     totals: {
       institutions: 0,
@@ -15,10 +15,12 @@ export default async function HomePage() {
     },
     recentInvoices: []
   };
+  const params = await searchParams;
+  const institutionId = params?.institutionId || undefined;
 
   try {
     await ensureSchema();
-    snapshot = await getDashboardSnapshot();
+    snapshot = await getDashboardSnapshot({ institutionId });
   } catch {
     snapshot = {
       totals: {

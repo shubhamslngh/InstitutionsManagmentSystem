@@ -16,9 +16,9 @@ export default async function StudentsPage({ searchParams }) {
   try {
     await ensureSchema();
     [students, institutions, classes] = await Promise.all([
-      listStudents(),
+      listStudents({ institutionId: params?.institutionId || undefined }),
       listInstitutions(),
-      listClasses()
+      listClasses({ institutionId: params?.institutionId || undefined })
     ]);
   } catch (cause) {
     error = cause.message;

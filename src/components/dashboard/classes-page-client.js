@@ -1,6 +1,6 @@
  "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, School2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button.js";
@@ -12,11 +12,15 @@ import { MetricCard } from "./metric-card.js";
 import { Badge } from "../ui/badge.js";
 import { ClassFormDialog } from "../forms/class-form-dialog.js";
 
-export function ClassesPageClient({ classes, institutions, initialError }) {
+export function ClassesPageClient({ classes, institutions, initialError, defaultInstitutionId = "" }) {
   const [classRows, setClassRows] = useState(classes);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState(null);
-  const [institutionFilter, setInstitutionFilter] = useState("");
+  const [institutionFilter, setInstitutionFilter] = useState(defaultInstitutionId);
+
+  useEffect(() => {
+    setInstitutionFilter(defaultInstitutionId);
+  }, [defaultInstitutionId]);
 
   const filteredClasses = useMemo(
     () =>

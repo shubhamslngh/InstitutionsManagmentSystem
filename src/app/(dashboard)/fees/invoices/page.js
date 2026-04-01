@@ -6,16 +6,18 @@ import { InvoicesPageClient } from "../../../../components/dashboard/invoices-pa
 
 export const dynamic = "force-dynamic";
 
-export default async function InvoicesPage() {
+export default async function InvoicesPage({ searchParams }) {
   let invoices = [];
   let students = [];
   let institutions = [];
+  const params = await searchParams;
+  const institutionId = params?.institutionId || undefined;
 
   try {
     await ensureSchema();
     [invoices, students, institutions] = await Promise.all([
-      listFeeAssignments(),
-      listStudents(),
+      listFeeAssignments({ institutionId }),
+      listStudents({ institutionId }),
       listInstitutions()
     ]);
   } catch {

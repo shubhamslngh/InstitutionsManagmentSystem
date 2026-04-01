@@ -6,21 +6,23 @@ import { FeesDashboardClient } from "../../../components/dashboard/fees-dashboar
 
 export const dynamic = "force-dynamic";
 
-export default async function FeesPage() {
+export default async function FeesPage({ searchParams }) {
   let invoices = [];
   let payments = [];
   let institutions = [];
   let classes = [];
   let structures = [];
+  const params = await searchParams;
+  const institutionId = params?.institutionId || undefined;
 
   try {
     await ensureSchema();
     [invoices, payments, institutions, classes, structures] = await Promise.all([
-      listFeeAssignments(),
-      listPayments(),
+      listFeeAssignments({ institutionId }),
+      listPayments({ institutionId }),
       listInstitutions(),
-      listClasses(),
-      listFeeStructures()
+      listClasses({ institutionId }),
+      listFeeStructures({ institutionId })
     ]);
   } catch {
     invoices = [];
@@ -37,6 +39,7 @@ export default async function FeesPage() {
       institutions={institutions}
       classes={classes}
       structures={structures}
+      defaultInstitutionId={institutionId || ""}
     />
   );
 }

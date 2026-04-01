@@ -1,6 +1,7 @@
 import { query } from "../db/index.js";
 
-export async function getDashboardSnapshot() {
+export async function getDashboardSnapshot(filters = {}) {
+  const institutionId = filters.institutionId || null;
   const [
     institutionsResult,
     studentsResult,
@@ -9,10 +10,30 @@ export async function getDashboardSnapshot() {
     outstandingResult,
     recentInvoicesResult
   ] = await Promise.all([
-    query("SELECT COUNT(*) AS count FROM institutions"),
-    query("SELECT COUNT(*) AS count FROM students"),
-    query("SELECT COUNT(*) AS count FROM fee_invoices"),
-    query("SELECT COALESCE(SUM(amount), 0) AS total FROM fee_payments"),
+    query(
+      institutionId
+        ? "SELECT COUNT(*) AS count FROM institutions WHERE id = $1"
+        : "SELECT COUNT(*) AS count FROM institutions",
+      institutionId ? [institutionId] : []
+    ),
+    query(
+      institutionId
+        ? "SELECT COUNT(*) AS count FROM students WHERE institution_id = $1"
+        : "SELECT COUNT(*) AS count FROM students",
+      institutionId ? [institutionId] : []
+    ),
+    query(
+      institutionId
+        ? "SELECT COUNT(*) AS count FROM fee_invoices WHERE institution_id = $1"
+        : "SELECT COUNT(*) AS count FROM fee_invoices",
+      institutionId ? [institutionId] : []
+    ),
+    query(
+      institutionId
+        ? "SELECT COALESCE(SUM(amount), 0) AS total FROM fee_payments WHERE institution_id = $1"
+        : "SELECT COALESCE(SUM(amount), 0) AS total FROM fee_payments",
+      institutionId ? [institutionId] : []
+    ),
     query(
       `
         SELECT COALESCE(SUM(balance), 0) AS total
@@ -20,9 +41,11 @@ export async function getDashboardSnapshot() {
           SELECT fi.net_amount - COALESCE(SUM(fp.amount), 0) AS balance
           FROM fee_invoices fi
           LEFT JOIN fee_payments fp ON fp.fee_invoice_id = fi.id
+          ${institutionId ? "WHERE fi.institution_id = $1" : ""}
           GROUP BY fi.id
         ) balances
-      `
+      `,
+      institutionId ? [institutionId] : []
     ),
     query(
       `
@@ -37,9 +60,11 @@ export async function getDashboardSnapshot() {
         FROM fee_invoices fi
         JOIN students s ON s.id = fi.student_id
         JOIN institutions i ON i.id = fi.institution_id
+        ${institutionId ? "WHERE fi.institution_id = $1" : ""}
         ORDER BY fi.created_at DESC
         LIMIT 5
-      `
+      `,
+      institutionId ? [institutionId] : []
     )
   ]);
 

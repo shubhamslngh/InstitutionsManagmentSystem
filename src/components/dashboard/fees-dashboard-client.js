@@ -17,14 +17,21 @@ import { Skeleton } from "../ui/skeleton.js";
 import { formatCurrency } from "../../lib/currency.js";
 import { formatDate } from "../../lib/dateFormat.js";
 
-export function FeesDashboardClient({ invoices, payments, institutions, classes, structures }) {
+export function FeesDashboardClient({
+  invoices,
+  payments,
+  institutions,
+  classes,
+  structures,
+  defaultInstitutionId = ""
+}) {
   const [invoiceRows, setInvoiceRows] = useState(invoices);
   const [paymentRows] = useState(payments);
   const [structureRows, setStructureRows] = useState(structures);
   const [structureDialogOpen, setStructureDialogOpen] = useState(false);
   const [editingStructure, setEditingStructure] = useState(null);
   const [ledgerFilters, setLedgerFilters] = useState({
-    institutionId: institutions[0]?.id || "",
+    institutionId: defaultInstitutionId || institutions[0]?.id || "",
     classId: "ALL",
     year: String(new Date().getFullYear())
   });
@@ -32,7 +39,7 @@ export function FeesDashboardClient({ invoices, payments, institutions, classes,
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerUpdatingKey, setLedgerUpdatingKey] = useState(null);
   const [classBillingForm, setClassBillingForm] = useState({
-    institutionId: institutions[0]?.id || "",
+    institutionId: defaultInstitutionId || institutions[0]?.id || "",
     classId: "",
     dueDate: "",
     notes: ""
@@ -84,6 +91,20 @@ export function FeesDashboardClient({ invoices, payments, institutions, classes,
     () => classes.filter((item) => item.institutionId === classBillingForm.institutionId),
     [classes, classBillingForm.institutionId]
   );
+
+  useEffect(() => {
+    const nextInstitutionId = defaultInstitutionId || institutions[0]?.id || "";
+    setLedgerFilters((current) => ({
+      ...current,
+      institutionId: nextInstitutionId,
+      classId: "ALL"
+    }));
+    setClassBillingForm((current) => ({
+      ...current,
+      institutionId: nextInstitutionId,
+      classId: ""
+    }));
+  }, [defaultInstitutionId, institutions]);
   useEffect(() => {
     setClassBillingForm((current) => {
       const nextClasses = classes.filter((item) => item.institutionId === current.institutionId);
@@ -132,6 +153,30 @@ export function FeesDashboardClient({ invoices, payments, institutions, classes,
       });
   }, [ledgerFilters]);
 
+  async function refreshLedgerRows() {
+    if (!ledgerFilters.institutionId) {
+      setLedgerRows([]);
+      return;
+    }
+
+    const params = new URLSearchParams({
+      institutionId: ledgerFilters.institutionId,
+      year: ledgerFilters.year
+    });
+
+    if (ledgerFilters.classId !== "ALL") {
+      params.set("classId", ledgerFilters.classId);
+    }
+
+    const response = await fetch(`/api/fees/monthly-ledger?${params.toString()}`);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.message || "Failed to load monthly ledger.");
+    }
+
+    setLedgerRows(result.data.rows || []);
+  }
+
   async function toggleLedgerMonth(row, month) {
     const key = `${row.studentId}-${row.feeStructureId}-${month.monthNumber}`;
     setLedgerUpdatingKey(key);
@@ -157,25 +202,13 @@ export function FeesDashboardClient({ invoices, payments, institutions, classes,
       return;
     }
 
-    setLedgerRows((current) =>
-      current.map((item) =>
-        item.studentId === row.studentId && item.feeStructureId === row.feeStructureId
-          ? {
-              ...item,
-              months: item.months.map((entry) =>
-                entry.monthNumber === month.monthNumber
-                  ? {
-                      ...entry,
-                      isPaid: Boolean(result.data?.isPaid),
-                      paidOn: result.data?.paidOn || null
-                    }
-                  : entry
-              )
-            }
-          : item
-      )
-    );
-    setLedgerUpdatingKey(null);
+    try {
+      await refreshLedgerRows();
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setLedgerUpdatingKey(null);
+    }
   }
 
   async function handleDeleteLedger(row) {
@@ -261,19 +294,31 @@ export function FeesDashboardClient({ invoices, payments, institutions, classes,
 
   function getLedgerSummary(row) {
     const paidMonths = row.months.filter((month) => month.isPaid).length;
-    const totalMonthsInScope = row.months.length;
-    const dueMonths = Math.max(totalMonthsInScope - paidMonths, 0);
-    const totalPayable = Number(row.amount) * totalMonthsInScope;
-    const totalPaid = Number(row.amount) * paidMonths;
-    const balance = Math.max(totalPayable - totalPaid, 0);
+    const dueMonths = Math.max(row.months.length - paidMonths, 0);
+    const totalDiscount = row.months.reduce(
+      (sum, month) => sum + Number(month.discountAmount || 0),
+      0
+    );
+    const totalPayable = row.months.reduce(
+      (sum, month) => sum + Number(month.netAmount || 0),
+      0
+    );
+    const totalPaid = row.months.reduce(
+      (sum, month) => sum + Number(month.totalPaid || 0),
+      0
+    );
+    const balance = row.months.reduce(
+      (sum, month) => sum + Number(month.balance || 0),
+      0
+    );
 
     return {
       paidMonths,
       dueMonths,
-      totalMonthsInScope,
       totalPayable,
       totalPaid,
-      balance
+      balance,
+      totalDiscount
     };
   }
 
@@ -571,6 +616,7 @@ export function FeesDashboardClient({ invoices, payments, institutions, classes,
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Monthly</th>
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Paid Months</th>
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Due Months</th>
+                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Discount</th>
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Total Payable</th>
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Total Paid</th>
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Balance</th>
@@ -586,7 +632,7 @@ export function FeesDashboardClient({ invoices, payments, institutions, classes,
                 {ledgerLoading ? (
                   Array.from({ length: 4 }).map((_, index) => (
                     <tr className="border-b" key={index}>
-                      {Array.from({ length: 22 }).map((__, cellIndex) => (
+                      {Array.from({ length: 23 }).map((__, cellIndex) => (
                         <td className="px-4 py-3" key={cellIndex}>
                           <Skeleton className="h-4 w-full min-w-10" />
                         </td>
@@ -595,7 +641,7 @@ export function FeesDashboardClient({ invoices, payments, institutions, classes,
                   ))
                 ) : ledgerRows.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-12 text-center text-muted-foreground" colSpan={22}>
+                    <td className="px-4 py-12 text-center text-muted-foreground" colSpan={23}>
                       No monthly fee structures found for the selected filters.
                     </td>
                   </tr>
@@ -611,6 +657,7 @@ export function FeesDashboardClient({ invoices, payments, institutions, classes,
                       <td className="px-4 py-3 whitespace-nowrap">{formatCurrency(row.amount)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{summary.paidMonths}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{summary.dueMonths}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-amber-600">{formatCurrency(summary.totalDiscount)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{formatCurrency(summary.totalPayable)}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-emerald-600">{formatCurrency(summary.totalPaid)}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-red-600">{formatCurrency(summary.balance)}</td>
