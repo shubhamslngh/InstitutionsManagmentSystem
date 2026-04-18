@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -35,6 +35,31 @@ const studentCategoryOptions = [
   "EWS",
   "MINORITY"
 ];
+const studentGenderOptions = ["MALE", "FEMALE", "OTHER"];
+const feeHeadOptions = [
+  "Admission Fee",
+  "Term Charges",
+  "Tuition Fee",
+  "Development Fee",
+  "Exam Fee",
+  "Lab Fee",
+  "Late Fee",
+  "Transport Fee"
+];
+const monthOptions = [
+  { value: "1", label: "Jan" },
+  { value: "2", label: "Feb" },
+  { value: "3", label: "Mar" },
+  { value: "4", label: "Apr" },
+  { value: "5", label: "May" },
+  { value: "6", label: "Jun" },
+  { value: "7", label: "Jul" },
+  { value: "8", label: "Aug" },
+  { value: "9", label: "Sep" },
+  { value: "10", label: "Oct" },
+  { value: "11", label: "Nov" },
+  { value: "12", label: "Dec" }
+];
 
 const optionalTrimmedString = z.string().transform((value) => value.trim());
 const optionalNameField = optionalTrimmedString.refine(
@@ -68,6 +93,8 @@ const studentSchema = z.object({
   institutionId: z.string().min(1, "Institution is required."),
   admissionNumber: z.string().trim().min(1, "Admission number is required."),
   category: z.string().refine((value) => value === "" || studentCategoryOptions.includes(value), "Select a valid category."),
+  gender: z.string().refine((value) => value === "" || studentGenderOptions.includes(value), "Select a valid gender."),
+  academicYear: optionalTrimmedString,
   firstName: optionalNameField.refine((value) => value.length >= 2, "Student name is required."),
   lastName: optionalNameField,
   motherName: optionalNameField,
@@ -85,6 +112,8 @@ const defaultValues = {
   institutionId: "",
   admissionNumber: "",
   category: "",
+  gender: "",
+  academicYear: "",
   firstName: "",
   lastName: "",
   motherName: "",
@@ -103,6 +132,8 @@ function normalizeStudentValues(values) {
     ...defaultValues,
     ...values,
     category: values?.category ?? "",
+    gender: values?.gender ?? "",
+    academicYear: values?.academicYear ?? "",
     lastName: values?.lastName ?? "",
     motherName: values?.motherName ?? "",
     fatherName: values?.fatherName ?? "",
@@ -113,6 +144,54 @@ function normalizeStudentValues(values) {
     dob: values?.dob ? formatDateInput(values.dob) : "",
     course: values?.course ?? "",
     classId: values?.classId ?? ""
+  };
+}
+
+function getAcademicYearStart(academicYear) {
+  const match = String(academicYear || "").trim().match(/^(\d{4})/);
+  return match ? Number(match[1]) : new Date().getFullYear();
+}
+
+function getDefaultFeeItem(academicYear) {
+  const now = new Date();
+  return {
+    feeInvoiceId: "",
+    feeStructureId: "",
+    name: "",
+    amount: "",
+    frequency: "ONE_TIME",
+    dueDate: "",
+    monthNumber: String(now.getMonth() + 1),
+    ledgerYear: String(getAcademicYearStart(academicYear)),
+    notes: ""
+  };
+}
+
+function buildFeeItemFromStructure(structure, academicYear) {
+  return {
+    feeInvoiceId: "",
+    feeStructureId: structure.id || "",
+    name: structure.name || "",
+    amount: String(Number(structure.amount || 0)),
+    frequency: structure.frequency === "MONTHLY" ? "MONTHLY" : "ONE_TIME",
+    dueDate: "",
+    monthNumber: String(new Date().getMonth() + 1),
+    ledgerYear: String(getAcademicYearStart(academicYear)),
+    notes: structure.notes || ""
+  };
+}
+
+function buildFeeItemFromInvoice(invoice) {
+  return {
+    feeInvoiceId: invoice.id || "",
+    feeStructureId: invoice.feeStructureId || "",
+    name: invoice.title || "",
+    amount: String(Number(invoice.netAmount || invoice.grossAmount || 0)),
+    frequency: invoice.monthNumber ? "MONTHLY" : "ONE_TIME",
+    dueDate: invoice.dueDate ? formatDateInput(invoice.dueDate) : "",
+    monthNumber: invoice.monthNumber ? String(invoice.monthNumber) : String(new Date().getMonth() + 1),
+    ledgerYear: invoice.ledgerYear ? String(invoice.ledgerYear) : String(new Date().getFullYear()),
+    notes: invoice.notes || ""
   };
 }
 
@@ -134,6 +213,7 @@ export function StudentFormDialog({
   defaultInstitutionId,
   onSuccess
 }) {
+  const isEditing = Boolean(initialValues?.id);
   const form = useForm({
     resolver: zodResolver(studentSchema),
     defaultValues: {
@@ -141,6 +221,10 @@ export function StudentFormDialog({
       institutionId: defaultInstitutionId || institutions[0]?.id || ""
     }
   });
+  const [feeItems, setFeeItems] = useState([getDefaultFeeItem("")]);
+  const [classFeeStructures, setClassFeeStructures] = useState([]);
+  const [loadingClassFees, setLoadingClassFees] = useState(false);
+  const [lastAppliedClassId, setLastAppliedClassId] = useState("");
 
   useEffect(() => {
     form.reset(
@@ -151,13 +235,31 @@ export function StudentFormDialog({
             institutionId: defaultInstitutionId || institutions[0]?.id || ""
           }
     );
+    setFeeItems([getDefaultFeeItem(initialValues?.academicYear || "")]);
+    setClassFeeStructures([]);
+    setLastAppliedClassId("");
   }, [defaultInstitutionId, form, initialValues, institutions]);
 
   const selectedInstitutionId = form.watch("institutionId");
+  const selectedAcademicYear = form.watch("academicYear");
+  const selectedClassId = form.watch("classId");
   const institutionClasses = useMemo(
-    () => classes.filter((item) => item.institutionId === selectedInstitutionId),
-    [classes, selectedInstitutionId]
+    () =>
+      classes.filter(
+        (item) =>
+          item.institutionId === selectedInstitutionId &&
+          (!selectedAcademicYear || item.academicYear === selectedAcademicYear)
+      ),
+    [classes, selectedAcademicYear, selectedInstitutionId]
   );
+  const institutionAcademicYears = useMemo(() => {
+    const years = classes
+      .filter((item) => item.institutionId === selectedInstitutionId)
+      .map((item) => item.academicYear)
+      .filter(Boolean);
+
+    return Array.from(new Set(years)).sort((left, right) => right.localeCompare(left));
+  }, [classes, selectedInstitutionId]);
 
   useEffect(() => {
     const currentClassId = form.getValues("classId");
@@ -168,12 +270,170 @@ export function StudentFormDialog({
     }
   }, [form, institutionClasses]);
 
+  useEffect(() => {
+    const currentAcademicYear = form.getValues("academicYear");
+    if (!currentAcademicYear) {
+      return;
+    }
+
+    const isValidAcademicYear = institutionAcademicYears.includes(currentAcademicYear);
+    if (!isValidAcademicYear) {
+      form.setValue("academicYear", "");
+      form.setValue("classId", "");
+    }
+  }, [form, institutionAcademicYears]);
+
+  const watchedAcademicYear = selectedAcademicYear;
+  useEffect(() => {
+    if (isEditing) {
+      return;
+    }
+
+    setFeeItems((current) =>
+      current.map((item) =>
+        item.frequency === "MONTHLY"
+          ? { ...item, ledgerYear: item.ledgerYear || String(getAcademicYearStart(watchedAcademicYear)) }
+          : item
+      )
+    );
+  }, [isEditing, watchedAcademicYear]);
+
+  function addFeeItem() {
+    setFeeItems((current) => [...current, getDefaultFeeItem(form.getValues("academicYear"))]);
+  }
+
+  function removeFeeItem(index) {
+    setFeeItems((current) => current.filter((_, idx) => idx !== index));
+  }
+
+  function updateFeeItem(index, field, value) {
+    setFeeItems((current) =>
+      current.map((item, idx) => (idx === index ? { ...item, [field]: value } : item))
+    );
+  }
+
+  function loadClassFeeRows() {
+    if (!selectedClassId || classFeeStructures.length === 0) {
+      return;
+    }
+
+    setFeeItems(classFeeStructures.map((structure) => buildFeeItemFromStructure(structure, selectedAcademicYear)));
+    setLastAppliedClassId(selectedClassId);
+  }
+
+  useEffect(() => {
+    if (!open || !selectedInstitutionId || !selectedClassId) {
+      setClassFeeStructures([]);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingClassFees(true);
+
+    fetch(`/api/fees/structures?institutionId=${selectedInstitutionId}&classId=${selectedClassId}`)
+      .then((response) => response.json().catch(() => ({})).then((result) => ({ ok: response.ok, result })))
+      .then(({ ok, result }) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (!ok) {
+          throw new Error(result.message || "Failed to load class fee structures.");
+        }
+
+        const nextStructures = result.data || [];
+        setClassFeeStructures(nextStructures);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setClassFeeStructures([]);
+          toast.error(error.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingClassFees(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, selectedInstitutionId, selectedClassId]);
+
+  useEffect(() => {
+    if (!selectedClassId || selectedClassId === lastAppliedClassId) {
+      return;
+    }
+
+    if (classFeeStructures.length === 0) {
+      return;
+    }
+
+    setFeeItems(classFeeStructures.map((structure) => buildFeeItemFromStructure(structure, selectedAcademicYear)));
+    setLastAppliedClassId(selectedClassId);
+  }, [classFeeStructures, lastAppliedClassId, selectedAcademicYear, selectedClassId]);
+
+  useEffect(() => {
+    if (!open || !initialValues?.id || !isEditing) {
+      return;
+    }
+
+    let cancelled = false;
+    fetch(`/api/fees/assignments?studentId=${initialValues.id}`)
+      .then((response) => response.json().catch(() => ({})).then((result) => ({ ok: response.ok, result })))
+      .then(({ ok, result }) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (!ok) {
+          throw new Error(result.message || "Failed to load student fee invoices.");
+        }
+
+        const invoices = result.data || [];
+        const editableInvoices = invoices.filter((invoice) =>
+          ["PENDING", "PARTIALLY_PAID"].includes(invoice.status)
+        );
+        if (editableInvoices.length > 0) {
+          setFeeItems(editableInvoices.map(buildFeeItemFromInvoice));
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          toast.error(error.message);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialValues?.id, isEditing, open]);
+
   async function onSubmit(values) {
-    const isEditing = Boolean(initialValues?.id);
+    const normalizedFeeItems = feeItems
+      .map((item) => ({
+        feeInvoiceId: item.feeInvoiceId || null,
+        feeStructureId: item.feeStructureId || null,
+        name: item.name.trim(),
+        amount: Number(item.amount),
+        frequency: item.frequency,
+        dueDate: item.frequency === "ONE_TIME" ? item.dueDate || null : null,
+        monthNumber: item.frequency === "MONTHLY" ? Number(item.monthNumber) : null,
+        ledgerYear: item.frequency === "MONTHLY" ? Number(item.ledgerYear) : null,
+        notes: item.notes.trim() || null
+      }))
+      .filter((item) => item.name && Number.isFinite(item.amount) && item.amount > 0);
+
+    const selectedClass = classes.find((item) => item.id === values.classId);
     const response = await fetch(isEditing ? `/api/students/${initialValues.id}` : "/api/students", {
       method: isEditing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values)
+      body: JSON.stringify({
+        ...values,
+        academicYear: values.academicYear || selectedClass?.academicYear || "",
+        feeItems: normalizedFeeItems
+      })
     });
 
     const result = await parseJson(response);
@@ -202,6 +462,7 @@ export function StudentFormDialog({
               ["institutionId", "Institution"],
               ["admissionNumber", "Admission Number"],
               ["category", "Category"],
+              ["gender", "Gender"],
               ["firstName", "First Name"],
               ["lastName", "Last Name"],
               ["motherName", "Mother Name"],
@@ -237,6 +498,15 @@ export function StudentFormDialog({
                             </option>
                           ))}
                         </Select>
+                      ) : name === "gender" ? (
+                        <Select {...field}>
+                          <option value="">Select Gender</option>
+                          {studentGenderOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </Select>
                       ) : name === "dob" ? (
                         <Input {...field} type="date" />
                       ) : (
@@ -250,12 +520,32 @@ export function StudentFormDialog({
             ))}
             <FormField
               control={form.control}
+              name="academicYear"
+              render={({ field, fieldState }) => (
+                <FormItem>
+                  <FormLabel>Academic Year</FormLabel>
+                  <FormControl>
+                    <Select {...field}>
+                      <option value="">Select Academic Year</option>
+                      {institutionAcademicYears.map((yearOption) => (
+                        <option key={yearOption} value={yearOption}>
+                          {yearOption}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormMessage>{fieldState.error?.message}</FormMessage>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
               name="classId"
               render={({ field, fieldState }) => (
                 <FormItem>
                   <FormLabel>Class</FormLabel>
                   <FormControl>
-                    <Select {...field}>
+                    <Select {...field} disabled={!selectedAcademicYear}>
                       <option value="">Unassigned</option>
                       {institutionClasses.map((item) => (
                         <option key={item.id} value={item.id}>
@@ -264,9 +554,14 @@ export function StudentFormDialog({
                       ))}
                     </Select>
                   </FormControl>
+                  {!selectedAcademicYear ? (
+                    <p className="text-sm text-muted-foreground">
+                      Select academic year first to view classes.
+                    </p>
+                  ) : null}
                   {institutionClasses.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      No classes found for the selected institution.
+                      No classes found for the selected academic year.
                     </p>
                   ) : null}
                   <FormMessage>{fieldState.error?.message}</FormMessage>
@@ -286,6 +581,111 @@ export function StudentFormDialog({
                 </FormItem>
               )}
             />
+            <div className="space-y-3 rounded-md border p-3 md:col-span-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold">Student Fee Structure</p>
+                    <p className="text-xs text-muted-foreground">Class fees can be loaded and adjusted here.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      disabled={!selectedClassId || loadingClassFees || classFeeStructures.length === 0}
+                      onClick={loadClassFeeRows}
+                      type="button"
+                      variant="outline"
+                    >
+                      {loadingClassFees ? "Loading..." : "Load Class Fees"}
+                    </Button>
+                    <Button onClick={addFeeItem} type="button" variant="outline">Add Fee Row</Button>
+                  </div>
+                </div>
+
+                {feeItems.map((item, index) => (
+                  <div className="grid gap-2 rounded-md border p-3 md:grid-cols-6" key={`fee-item-${index}`}>
+                    <div className="md:col-span-2">
+                      <p className="mb-1 text-xs text-muted-foreground">Fee Head</p>
+                      <Input
+                        list={`fee-head-options-${index}`}
+                        onChange={(event) => updateFeeItem(index, "name", event.target.value)}
+                        placeholder="Select or type fee head"
+                        value={item.name}
+                      />
+                      <datalist id={`fee-head-options-${index}`}>
+                        {feeHeadOptions.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </datalist>
+                    </div>
+
+                    <div>
+                      <p className="mb-1 text-xs text-muted-foreground">Amount</p>
+                      <Input
+                        min="1"
+                        onChange={(event) => updateFeeItem(index, "amount", event.target.value)}
+                        type="number"
+                        value={item.amount}
+                      />
+                    </div>
+
+                    <div>
+                      <p className="mb-1 text-xs text-muted-foreground">Frequency</p>
+                      <Select
+                        onChange={(event) => updateFeeItem(index, "frequency", event.target.value)}
+                        value={item.frequency}
+                      >
+                        <option value="ONE_TIME">ONE_TIME</option>
+                        <option value="MONTHLY">MONTHLY</option>
+                      </Select>
+                    </div>
+
+                    {item.frequency === "MONTHLY" ? (
+                      <>
+                        <div>
+                          <p className="mb-1 text-xs text-muted-foreground">Month</p>
+                          <Select
+                            onChange={(event) => updateFeeItem(index, "monthNumber", event.target.value)}
+                            value={item.monthNumber}
+                          >
+                            {monthOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div>
+                          <p className="mb-1 text-xs text-muted-foreground">Year</p>
+                          <Input
+                            min="2000"
+                            onChange={(event) => updateFeeItem(index, "ledgerYear", event.target.value)}
+                            type="number"
+                            value={item.ledgerYear}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="md:col-span-2">
+                        <p className="mb-1 text-xs text-muted-foreground">Due Date</p>
+                        <Input
+                          onChange={(event) => updateFeeItem(index, "dueDate", event.target.value)}
+                          type="date"
+                          value={item.dueDate}
+                        />
+                      </div>
+                    )}
+
+                    <div className="md:col-span-5">
+                      <p className="mb-1 text-xs text-muted-foreground">Notes (optional)</p>
+                      <Input
+                        onChange={(event) => updateFeeItem(index, "notes", event.target.value)}
+                        placeholder="Optional note"
+                        value={item.notes}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button onClick={() => removeFeeItem(index)} type="button" variant="outline">Remove</Button>
+                    </div>
+                  </div>
+                ))}
+            </div>
             <DialogFooter className="md:col-span-2">
               <Button type="submit" disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting ? "Saving..." : "Save Student"}

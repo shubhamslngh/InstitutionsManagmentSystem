@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Eye, Printer } from "lucide-react";
+import { Printer } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "../../lib/currency.js";
 import { formatDate } from "../../lib/dateFormat.js";
@@ -42,6 +42,15 @@ const tabs = [
   { id: "payments", label: "Payments" },
   { id: "actions", label: "Actions" }
 ];
+const shortMonthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function getTodayInputValue() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 function summarizeInvoices(invoices) {
   return invoices.reduce(
@@ -76,314 +85,533 @@ function getClassLabel(student) {
   return student.section ? `${student.className} - ${student.section}` : student.className;
 }
 
-function getReceiptRows(receipt) {
-  return [
-    ["Receipt No.", receipt.invoice.receiptNumber || "NA"],
-    ["Receipt Title", receipt.invoice.title || "NA"],
-    ["Student Name", getStudentName(receipt.student)],
-    ["Admission No.", receipt.student.admissionNumber || "NA"],
-    ["Father Name", receipt.student.fatherName || "NA"],
-    ["Mother Name", receipt.student.motherName || "NA"],
-    ["Class", getClassLabel(receipt.student)],
-    ["Academic Year", receipt.academicYear || "NA"],
-    ["Due Date", formatDate(receipt.invoice.dueDate)],
-    ["Status", receipt.invoice.status || "NA"],
-    ["Gross Amount", formatCurrency(receipt.invoice.grossAmount)],
-    ["Discount", formatCurrency(receipt.invoice.discountAmount)],
-    ["Net Amount", formatCurrency(receipt.invoice.netAmount)],
-    ["Paid Amount", formatCurrency(receipt.invoice.totalPaid)],
-    ["Balance", formatCurrency(receipt.invoice.balance)]
-  ].concat(receipt.invoice.notes ? [["Notes", receipt.invoice.notes]] : []);
-}
+function getInvoiceDisplayTitle(invoice) {
+  const monthNumber = Number(invoice?.monthNumber || 0);
+  const ledgerYear = Number(invoice?.ledgerYear || 0);
+  const baseTitle = invoice?.title || "Invoice";
 
-function getMonthsMarkup(receipt) {
-  if (!receipt.months?.length) {
-    return "";
+  if (monthNumber < 1 || monthNumber > 12) {
+    return baseTitle;
   }
 
+  const monthLabel = `${shortMonthLabels[monthNumber - 1]}${ledgerYear ? ` ${ledgerYear}` : ""}`;
+  if (baseTitle.includes(monthLabel)) {
+    return baseTitle;
+  }
+
+  return `${baseTitle} (${monthLabel})`;
+}
+
+function getMonthlyLedgerRowSummary(row) {
+  const paidMonths = row.months.filter((month) => month.isPaid).length;
+  const dueMonths = row.months.length - paidMonths;
+  return { paidMonths, dueMonths };
+}
+
+function getReceiptMonthLabel(receipt) {
+  const sourceDate = receipt.cutoffDate
+    ? new Date(receipt.cutoffDate)
+    : receipt.generatedOn
+      ? new Date(receipt.generatedOn)
+      : new Date();
+  if (Number.isNaN(sourceDate.getTime())) {
+    return "NA";
+  }
+
+  const day = String(sourceDate.getDate()).padStart(2, "0");
+  return `${day} ${shortMonthLabels[sourceDate.getMonth()]} ${sourceDate.getFullYear()}`;
+}
+
+function splitAmountParts(amount) {
+  const value = Math.max(Number(amount || 0), 0);
+  const [rs, ps] = value.toFixed(2).split(".");
+  return { rs, ps };
+}
+
+function getReceiptFeeRows(receipt) {
+  return (receipt.pendingDueInvoices || []).map((item) => ({
+    name: item.label || "Pending Due",
+    amount: Number(item.balance || 0)
+  }));
+}
+
+function getPaidRows(receipt) {
+  return (receipt.paidInvoices || []).map((item) => ({
+    name: item.label || "Paid Invoice",
+    amount: Number(item.paymentAgainst || 0)
+  }));
+}
+
+function getPaddedFeeRows(rows, minRows = 8) {
+  const padded = [...rows];
+  while (padded.length < minRows) {
+    padded.push({ name: "", amount: null });
+  }
+  return padded;
+}
+
+function getPrintableCopyMarkup(receipt, copyLabel) {
+  const feeRows = getReceiptFeeRows(receipt);
+  const printableRows = getPaddedFeeRows(feeRows);
+  const paidRows = getPaidRows(receipt);
+  const paidRowsMarkup = paidRows.length > 0
+    ? paidRows.map((row, index) => {
+        const amountParts = splitAmountParts(row.amount);
+        return `
+          <tr>
+            <td class="col-sl">${index + 1}.</td>
+            <td class="col-particulars">${escapeHtml(row.name || "")}</td>
+            <td class="col-rs">${escapeHtml(amountParts.rs)}</td>
+            <td class="col-ps">${escapeHtml(amountParts.ps)}</td>
+          </tr>
+        `;
+      }).join("")
+    : `
+      <tr>
+        <td class="col-sl"></td>
+        <td class="col-particulars">No paid invoices yet</td>
+        <td class="col-rs"></td>
+        <td class="col-ps"></td>
+      </tr>
+    `;
+
+  const dueAmount = Number(receipt.totals?.pendingDueTillDate || 0);
+  const totalAssigned = Number(receipt.totals?.totalAssigned || 0);
+  const totalPaid = Number(receipt.totals?.totalPaid || 0);
+  const netDue = Number(receipt.totals?.netDue || 0);
+  const dueParts = splitAmountParts(dueAmount);
+  const assignedParts = splitAmountParts(totalAssigned);
+  const paidParts = splitAmountParts(totalPaid);
+  const netDueParts = splitAmountParts(netDue);
+  const studentName = getStudentName(receipt.student);
+  const classLabel = getClassLabel(receipt.student);
+  const monthLabel = getReceiptMonthLabel(receipt);
+  const contactLine = [receipt.institution.contactPhone, receipt.institution.contactEmail]
+    .filter(Boolean)
+    .join(" | ");
+
   return `
-    <section class="months-section">
-      <div class="section-title">Monthly Fee Status</div>
-      <div class="months-grid">
-        ${receipt.months.map((month) => `
-          <div class="month-card ${month.isCurrentInvoiceMonth ? "current" : ""}">
-            <div class="month-label">${escapeHtml(month.label)}</div>
-            ${month.isPaid ? '<div class="stamp">PAID</div>' : '<div class="stamp pending">PENDING</div>'}
-            <div class="month-note">${escapeHtml(month.paidOn ? `Paid on ${formatDate(month.paidOn)}` : "Not paid")}</div>
-          </div>
-        `).join("")}
+    <section class="receipt-copy">
+      <div class="receipt-top-title">FEE RECEIPT</div>
+      <div class="receipt-school-name">${escapeHtml(receipt.institution.name || "School Name")}</div>
+      <div class="receipt-school-meta">${escapeHtml(receipt.institution.address || "")}</div>
+      <div class="receipt-school-meta">${escapeHtml(contactLine || "")}</div>
+      <div class="copy-chip">${escapeHtml(copyLabel)}</div>
+
+      <div class="meta-row">
+        <span class="meta-label">Serial No.</span>
+        <span class="meta-value">${escapeHtml(`CONSOLIDATED-${(receipt.student?.admissionNumber || "NA").toString()}`)}</span>
+        <span class="meta-label right">As On</span>
+        <span class="meta-value">${escapeHtml(monthLabel)}</span>
+      </div>
+      <div class="meta-row single">
+        <span class="meta-label">Admission No.</span>
+        <span class="meta-value">${escapeHtml(receipt.student.admissionNumber || "NA")}</span>
+      </div>
+      <div class="meta-row single">
+        <span class="meta-label">Student Name</span>
+        <span class="meta-value">${escapeHtml(studentName)}</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Class</span>
+        <span class="meta-value">${escapeHtml(classLabel)}</span>
+        <span class="meta-label right">Section</span>
+        <span class="meta-value">${escapeHtml(receipt.student.section || "NA")}</span>
+      </div>
+
+      <table class="fee-table">
+        <thead>
+          <tr>
+            <th class="col-sl">Sl.No.</th>
+            <th class="col-particulars">Pending Dues Till Date</th>
+            <th class="col-rs">Rs.</th>
+            <th class="col-ps">P.</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${printableRows.map((row, index) => {
+            const amountParts = row.amount === null ? { rs: "", ps: "" } : splitAmountParts(row.amount);
+            return `
+              <tr>
+                <td class="col-sl">${row.name ? `${index + 1}.` : ""}</td>
+                <td class="col-particulars">${escapeHtml(row.name || "")}</td>
+                <td class="col-rs">${escapeHtml(amountParts.rs)}</td>
+                <td class="col-ps">${escapeHtml(amountParts.ps)}</td>
+              </tr>
+            `;
+          }).join("")}
+          <tr class="total-row">
+            <td class="col-sl"></td>
+            <td class="col-particulars total-label">TOTAL PENDING</td>
+            <td class="col-rs">${escapeHtml(dueParts.rs)}</td>
+            <td class="col-ps">${escapeHtml(dueParts.ps)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="fee-table" style="margin-top: 8px;">
+        <thead>
+          <tr>
+            <th class="col-sl">Sl.No.</th>
+            <th class="col-particulars">Paid Invoices</th>
+            <th class="col-rs">Rs.</th>
+            <th class="col-ps">P.</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${paidRowsMarkup}
+          <tr class="total-row">
+            <td class="col-sl"></td>
+            <td class="col-particulars total-label">TOTAL PAID</td>
+            <td class="col-rs">${escapeHtml(paidParts.rs)}</td>
+            <td class="col-ps">${escapeHtml(paidParts.ps)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="margin-top:8px; font-size:11px; display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:8px;">
+        <div><strong>Total Assigned:</strong> ${escapeHtml(`${assignedParts.rs}.${assignedParts.ps}`)}</div>
+        <div><strong>Total Paid:</strong> ${escapeHtml(`${paidParts.rs}.${paidParts.ps}`)}</div>
+        <div><strong>Net Due:</strong> ${escapeHtml(`${netDueParts.rs}.${netDueParts.ps}`)}</div>
+      </div>
+
+      <div class="receipt-footer">
+        <div class="footer-field">
+          <span class="line"></span>
+          <span class="footer-label">Date</span>
+        </div>
+        <div class="footer-field align-right">
+          <span class="line"></span>
+          <span class="footer-label">Signature</span>
+        </div>
       </div>
     </section>
   `;
 }
 
-function getPrintableReceiptMarkup(receipt, copyType) {
-  const rows = getReceiptRows(receipt);
-  const copyLabel = copyType === "office" ? "Office Copy" : "Student Copy";
-
+function getPrintableReceiptMarkup(receipt) {
   return `<!DOCTYPE html>
   <html lang="en">
     <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>${escapeHtml(receipt.invoice.title)} - ${escapeHtml(copyLabel)}</title>
+      <title>${escapeHtml(getStudentName(receipt.student))} - Consolidated Fee Receipt</title>
       <style>
         :root {
           color-scheme: light;
         }
-
         * {
           box-sizing: border-box;
         }
-
         body {
           margin: 0;
-          padding: 12px;
-          font-family: Arial, Helvetica, sans-serif;
+          padding: 0;
+          font-family: "Arial", sans-serif;
           color: #111827;
-          background: #ffffff;
+          background: #fff;
         }
-
-        .copy {
-          border: 1.5px solid #111827;
-          border-radius: 10px;
-          padding: 12px;
+        .print-page {
           max-width: 210mm;
           margin: 0 auto;
+          padding: 8mm;
         }
-
-        .header {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 16px;
-          margin-bottom: 10px;
-          padding-bottom: 8px;
-          border-bottom: 1px solid #d1d5db;
+        .receipt-copy {
+          border: 1px solid #8a8a8a;
+          padding: 6mm;
+          min-height: calc((297mm - 24mm) / 2 - 3mm);
         }
-
-        .title {
-          margin: 0;
-          font-size: 20px;
-          font-weight: 700;
-        }
-
-        .subtitle {
-          margin: 4px 0 0;
-          font-size: 12px;
-          color: #4b5563;
-        }
-
-        .badge {
-          padding: 6px 10px;
-          border: 1px solid #111827;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 700;
-          white-space: nowrap;
-        }
-
-        .details-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 8px;
-        }
-
-        .detail-row {
-          display: grid;
-          grid-template-columns: 120px minmax(0, 1fr);
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          overflow: hidden;
-          font-size: 12px;
-        }
-
-        .detail-label {
-          padding: 7px 8px;
-          background: #f3f4f6;
-          font-weight: 700;
-        }
-
-        .detail-value {
-          padding: 7px 8px;
-        }
-
-        .months-section {
-          margin-top: 12px;
-        }
-
-        .section-title {
-          margin-bottom: 8px;
-          font-size: 14px;
-          font-weight: 700;
-        }
-
-        .months-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 8px;
-        }
-
-        .month-card {
-          position: relative;
-          min-height: 64px;
-          padding: 8px;
-          border: 1px solid #d1d5db;
-          border-radius: 8px;
-          background: #f9fafb;
-          break-inside: avoid;
-        }
-
-        .month-card.current {
-          border-color: #2563eb;
-        }
-
-        .month-label {
-          font-size: 12px;
-          font-weight: 700;
-        }
-
-        .month-note {
-          margin-top: 20px;
-          font-size: 10px;
-          color: #4b5563;
-        }
-
-        .stamp {
-          position: absolute;
-          top: 8px;
-          right: 8px;
-          padding: 2px 6px;
-          border: 1.5px solid #b91c1c;
-          color: #b91c1c;
-          font-size: 10px;
-          font-weight: 800;
-          letter-spacing: 0.05em;
-          border-radius: 999px;
-          transform: rotate(-8deg);
-        }
-
-        .stamp.pending {
-          border-color: #6b7280;
-          color: #6b7280;
-        }
-
-        .footer {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 24px;
-          margin-top: 16px;
-        }
-
-        .signature {
-          padding-top: 18px;
-          border-top: 1px solid #111827;
+        .receipt-top-title {
           text-align: center;
           font-size: 12px;
+          font-weight: 700;
+          margin-bottom: 4px;
+          letter-spacing: 0.05em;
         }
-
+        .receipt-school-name {
+          text-align: center;
+          font-size: 28px;
+          font-weight: 800;
+          margin-bottom: 2px;
+          text-transform: uppercase;
+          line-height: 1.05;
+        }
+        .receipt-school-meta {
+          text-align: center;
+          font-size: 11px;
+          margin-bottom: 2px;
+          color: #374151;
+        }
+        .copy-chip {
+          text-align: right;
+          font-size: 10px;
+          font-weight: 700;
+          margin-top: 2px;
+          margin-bottom: 5px;
+        }
+        .meta-row {
+          display: grid;
+          grid-template-columns: 78px 1fr 58px 1fr;
+          align-items: end;
+          gap: 8px;
+          margin-bottom: 5px;
+          font-size: 11px;
+        }
+        .meta-row.single {
+          grid-template-columns: 78px 1fr;
+        }
+        .meta-label {
+          white-space: nowrap;
+        }
+        .meta-label.right {
+          text-align: right;
+        }
+        .meta-value {
+          border-bottom: 1px dotted #7a7a7a;
+          min-height: 15px;
+          line-height: 15px;
+          padding-left: 4px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .fee-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 11px;
+          margin-top: 6px;
+        }
+        .fee-table th,
+        .fee-table td {
+          border: 1px solid #8a8a8a;
+          height: 24px;
+          padding: 3px 6px;
+        }
+        .fee-table th {
+          font-weight: 700;
+          text-align: left;
+          background: #fafafa;
+        }
+        .col-sl {
+          width: 42px;
+          text-align: center;
+        }
+        .col-particulars {
+          width: auto;
+        }
+        .col-rs {
+          width: 72px;
+          text-align: right;
+          font-variant-numeric: tabular-nums;
+        }
+        .col-ps {
+          width: 36px;
+          text-align: center;
+          font-variant-numeric: tabular-nums;
+        }
+        .total-row td {
+          font-weight: 700;
+        }
+        .total-label {
+          text-align: right;
+          letter-spacing: 0.03em;
+        }
+        .receipt-footer {
+          margin-top: 14px;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+        }
+        .footer-field {
+          width: 42%;
+          text-align: center;
+        }
+        .footer-field.align-right {
+          margin-left: auto;
+        }
+        .footer-field .line {
+          display: block;
+          border-bottom: 1px dotted #7a7a7a;
+          margin-bottom: 3px;
+        }
+        .footer-label {
+          font-size: 11px;
+        }
+        .tear-line {
+          margin: 4mm 0;
+          text-align: center;
+          font-size: 9px;
+          color: #6b7280;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          border-top: 1px dashed #9ca3af;
+          padding-top: 1mm;
+        }
         @media print {
           @page {
             size: A4 portrait;
-            margin: 8mm;
-          }
-
-          body {
-            padding: 0;
-          }
-
-          .copy {
-            border-radius: 0;
+            margin: 0;
           }
         }
       </style>
     </head>
     <body>
-      <section class="copy">
-        <div class="header">
-          <div>
-            <h1 class="title">${escapeHtml(receipt.institution.name || "Fee Receipt")}</h1>
-            <p class="subtitle">${escapeHtml(receipt.invoice.title || "Fee Receipt")}</p>
-            <p class="subtitle">Receipt No. ${escapeHtml(receipt.invoice.receiptNumber || "NA")}</p>
-          </div>
-          <div class="badge">${escapeHtml(copyLabel)}</div>
-        </div>
-
-        <section class="details-grid">
-          ${rows.map(([label, value]) => `
-            <div class="detail-row">
-              <div class="detail-label">${escapeHtml(label)}</div>
-              <div class="detail-value">${escapeHtml(value)}</div>
-            </div>
-          `).join("")}
-        </section>
-
-        ${copyType === "student" ? getMonthsMarkup(receipt) : ""}
-
-        <div class="footer">
-          <div class="signature">Student / Parent Signature</div>
-          <div class="signature">Authorized Signature</div>
-        </div>
-      </section>
+      <main class="print-page">
+        ${getPrintableCopyMarkup(receipt, "Office Copy")}
+        <div class="tear-line">Cut Here</div>
+        ${getPrintableCopyMarkup(receipt, "Student Copy")}
+      </main>
     </body>
   </html>`;
 }
 
-function ReceiptPreview({ receipt, copyType }) {
+function ReceiptPreview({ receipt }) {
   if (!receipt) {
     return null;
   }
 
-  const rows = getReceiptRows(receipt);
+  const feeRows = getPaddedFeeRows(getReceiptFeeRows(receipt));
+  const paidRows = getPaidRows(receipt);
+  const dueParts = splitAmountParts(receipt.totals?.pendingDueTillDate || 0);
+  const paidParts = splitAmountParts(receipt.totals?.totalPaid || 0);
+  const assignedParts = splitAmountParts(receipt.totals?.totalAssigned || 0);
+  const netDueParts = splitAmountParts(receipt.totals?.netDue || 0);
+  const studentName = getStudentName(receipt.student);
+  const classLabel = getClassLabel(receipt.student);
+  const monthLabel = getReceiptMonthLabel(receipt);
 
-  return (
-    <div className="rounded-md border bg-card">
-      <div className="flex flex-col gap-3 border-b border-border p-5 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h3 className="text-xl font-semibold">{receipt.institution.name || "Fee Receipt"}</h3>
-          <p className="text-sm text-muted-foreground">{receipt.invoice.title || "Fee Receipt"}</p>
+  const renderCopy = (copyLabel) => (
+    <section className="rounded-md border border-zinc-400 bg-white p-4 text-zinc-900">
+      <div className="mb-1 text-center text-[11px] font-bold tracking-wide">FEE RECEIPT</div>
+      <div className="text-center text-3xl font-extrabold uppercase leading-tight">{receipt.institution.name || "School Name"}</div>
+      {receipt.institution.address ? <div className="text-center text-xs text-zinc-700">{receipt.institution.address}</div> : null}
+      {(receipt.institution.contactPhone || receipt.institution.contactEmail) ? (
+        <div className="text-center text-xs text-zinc-700">
+          {[receipt.institution.contactPhone, receipt.institution.contactEmail].filter(Boolean).join(" | ")}
         </div>
-        <div className="rounded-full border border-foreground px-3 py-1 text-xs font-semibold tracking-wide text-foreground">
-          {copyType === "office" ? "Office Copy" : "Student Copy"}
+      ) : null}
+      <div className="mb-3 mt-1 text-right text-[10px] font-bold">{copyLabel}</div>
+
+        <div className="space-y-1 text-sm">
+          <div className="grid grid-cols-[76px_minmax(0,1fr)_58px_minmax(0,1fr)] items-end gap-2">
+            <span>Serial No.</span>
+          <span className="border-b border-dotted border-zinc-500 px-1">{`CONSOLIDATED-${receipt.student?.admissionNumber || "NA"}`}</span>
+          <span className="text-right">As On</span>
+          <span className="border-b border-dotted border-zinc-500 px-1">{monthLabel}</span>
+        </div>
+        <div className="grid grid-cols-[76px_minmax(0,1fr)] items-end gap-2">
+          <span>Admission No.</span>
+          <span className="border-b border-dotted border-zinc-500 px-1">{receipt.student.admissionNumber || "NA"}</span>
+        </div>
+        <div className="grid grid-cols-[76px_minmax(0,1fr)] items-end gap-2">
+          <span>Student Name</span>
+          <span className="border-b border-dotted border-zinc-500 px-1">{studentName}</span>
+        </div>
+        <div className="grid grid-cols-[76px_minmax(0,1fr)_58px_minmax(0,1fr)] items-end gap-2">
+          <span>Class</span>
+          <span className="border-b border-dotted border-zinc-500 px-1">{classLabel}</span>
+          <span className="text-right">Section</span>
+          <span className="border-b border-dotted border-zinc-500 px-1">{receipt.student.section || "NA"}</span>
         </div>
       </div>
 
-      <div className="p-5">
-        <div className="grid gap-2 lg:grid-cols-2">
-          {rows.map(([label, value]) => (
-            <div className="grid grid-cols-[120px_minmax(0,1fr)] overflow-hidden rounded-md border" key={label}>
-              <div className="bg-muted px-3 py-2 text-sm font-medium">{label}</div>
-              <div className="px-3 py-2 text-sm">{value}</div>
-            </div>
-          ))}
-        </div>
+      <div className="mt-2 overflow-hidden rounded-sm border border-zinc-400">
+        <table className="min-w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-zinc-50">
+              <th className="w-12 border-r border-zinc-400 px-2 py-1 text-left">Sl.No.</th>
+              <th className="border-r border-zinc-400 px-2 py-1 text-left">Pending Dues Till Date</th>
+              <th className="w-20 border-r border-zinc-400 px-2 py-1 text-right">Rs.</th>
+              <th className="w-10 px-2 py-1 text-center">P.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {feeRows.map((row, index) => {
+              const parts = row.amount === null ? { rs: "", ps: "" } : splitAmountParts(row.amount);
+              return (
+                <tr className="border-t border-zinc-300" key={`${copyLabel}-${index}-${row.name || "blank"}`}>
+                  <td className="border-r border-zinc-300 px-2 py-1 text-center">{row.name ? `${index + 1}.` : ""}</td>
+                  <td className="border-r border-zinc-300 px-2 py-1">{row.name}</td>
+                  <td className="border-r border-zinc-300 px-2 py-1 text-right">{parts.rs}</td>
+                  <td className="px-2 py-1 text-center">{parts.ps}</td>
+                </tr>
+              );
+            })}
+            <tr className="border-t border-zinc-400 font-bold">
+              <td className="border-r border-zinc-400 px-2 py-1"></td>
+              <td className="border-r border-zinc-400 px-2 py-1 text-right">TOTAL PENDING</td>
+              <td className="border-r border-zinc-400 px-2 py-1 text-right">{dueParts.rs}</td>
+              <td className="px-2 py-1 text-center">{dueParts.ps}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-        {copyType === "student" && receipt.months?.length > 0 ? (
-          <div className="mt-6">
-            <div className="mb-3 text-sm font-semibold">Monthly Fee Status</div>
-            <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-4">
-              {receipt.months.map((month) => (
-                <div
-                  className={`relative rounded-md border p-3 ${month.isCurrentInvoiceMonth ? "border-primary" : "border-border"} bg-muted/30`}
-                  key={`${month.calendarYear}-${month.monthNumber}`}
-                >
-                  <div className="text-sm font-semibold">{month.label}</div>
-                  <div className={`absolute right-3 top-3 rounded-full border-2 px-2 py-0.5 text-[10px] font-extrabold tracking-[0.18em] rotate-[-8deg] ${month.isPaid ? "border-red-700 text-red-700" : "border-slate-500 text-slate-500"}`}>
-                    {month.isPaid ? "PAID" : "PENDING"}
-                  </div>
-                  <div className="mt-8 text-xs text-muted-foreground">
-                    {month.paidOn ? `Paid on ${formatDate(month.paidOn)}` : "Not paid"}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
+      <div className="mt-2 overflow-hidden rounded-sm border border-zinc-400">
+        <table className="min-w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-zinc-50">
+              <th className="w-12 border-r border-zinc-400 px-2 py-1 text-left">Sl.No.</th>
+              <th className="border-r border-zinc-400 px-2 py-1 text-left">Paid Invoices</th>
+              <th className="w-20 border-r border-zinc-400 px-2 py-1 text-right">Rs.</th>
+              <th className="w-10 px-2 py-1 text-center">P.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paidRows.length === 0 ? (
+              <tr className="border-t border-zinc-300">
+                <td className="border-r border-zinc-300 px-2 py-1 text-center"></td>
+                <td className="border-r border-zinc-300 px-2 py-1">No paid invoices yet</td>
+                <td className="border-r border-zinc-300 px-2 py-1 text-right"></td>
+                <td className="px-2 py-1 text-center"></td>
+              </tr>
+            ) : paidRows.map((row, index) => {
+              const parts = splitAmountParts(row.amount);
+              return (
+                <tr className="border-t border-zinc-300" key={`${copyLabel}-paid-${index}-${row.name || "paid"}`}>
+                  <td className="border-r border-zinc-300 px-2 py-1 text-center">{index + 1}.</td>
+                  <td className="border-r border-zinc-300 px-2 py-1">{row.name}</td>
+                  <td className="border-r border-zinc-300 px-2 py-1 text-right">{parts.rs}</td>
+                  <td className="px-2 py-1 text-center">{parts.ps}</td>
+                </tr>
+              );
+            })}
+            <tr className="border-t border-zinc-400 font-bold">
+              <td className="border-r border-zinc-400 px-2 py-1"></td>
+              <td className="border-r border-zinc-400 px-2 py-1 text-right">TOTAL PAID</td>
+              <td className="border-r border-zinc-400 px-2 py-1 text-right">{paidParts.rs}</td>
+              <td className="px-2 py-1 text-center">{paidParts.ps}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-        <div className="mt-8 grid gap-6 sm:grid-cols-2">
-          <div className="border-t border-foreground pt-6 text-center text-sm">Student / Parent Signature</div>
-          <div className="border-t border-foreground pt-6 text-center text-sm">Authorized Signature</div>
+      <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+        <div className="rounded border p-2"><span className="font-semibold">Total Assigned:</span> {assignedParts.rs}.{assignedParts.ps}</div>
+        <div className="rounded border p-2"><span className="font-semibold">Total Paid:</span> {paidParts.rs}.{paidParts.ps}</div>
+        <div className="rounded border p-2"><span className="font-semibold">Net Due:</span> {netDueParts.rs}.{netDueParts.ps}</div>
+      </div>
+
+      <div className="mt-5 flex items-end justify-between gap-8 text-sm">
+        <div className="w-40 text-center">
+          <div className="border-b border-dotted border-zinc-500"></div>
+          <div className="mt-1">Date</div>
         </div>
+        <div className="w-40 text-center">
+          <div className="border-b border-dotted border-zinc-500"></div>
+          <div className="mt-1">Signature</div>
+        </div>
+      </div>
+    </section>
+  );
+
+  return (
+    <div className="rounded-md border bg-card p-4">
+      <div className="space-y-4">
+        {renderCopy("Office Copy")}
+        <div className="border-t border-dashed border-zinc-400 pt-2 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+          Tear Here
+        </div>
+        {renderCopy("Student Copy")}
       </div>
     </div>
   );
@@ -401,7 +629,12 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
-  const [receiptTab, setReceiptTab] = useState("student");
+  const [receiptCutoffDate, setReceiptCutoffDate] = useState(getTodayInputValue());
+  const [settlingTillDate, setSettlingTillDate] = useState(false);
+  const [studentLedgerYear, setStudentLedgerYear] = useState(String(new Date().getFullYear()));
+  const [studentLedgerRows, setStudentLedgerRows] = useState([]);
+  const [studentLedgerLoading, setStudentLedgerLoading] = useState(false);
+  const [studentLedgerUpdatingKey, setStudentLedgerUpdatingKey] = useState("");
 
   async function loadFeeData(studentId) {
     setLoading(true);
@@ -434,6 +667,68 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
     setLoading(false);
   }
 
+  async function loadStudentLedger(studentData, year) {
+    if (!studentData?.id || !studentData?.institutionId) {
+      setStudentLedgerRows([]);
+      return;
+    }
+
+    setStudentLedgerLoading(true);
+    const params = new URLSearchParams({
+      institutionId: studentData.institutionId,
+      year: String(year)
+    });
+    if (studentData.classId) {
+      params.set("classId", studentData.classId);
+    }
+
+    const response = await fetch(`/api/fees/monthly-ledger?${params.toString()}`);
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setStudentLedgerLoading(false);
+      throw new Error(result.message || "Failed to load monthly ledger.");
+    }
+
+    const rows = (result.data?.rows || []).filter((row) => row.studentId === studentData.id);
+    setStudentLedgerRows(rows);
+    setStudentLedgerLoading(false);
+  }
+
+  async function toggleStudentLedgerMonth(row, month) {
+    if (!student?.id) {
+      return;
+    }
+
+    const checkboxKey = `${row.feeStructureId}-${month.monthNumber}`;
+    setStudentLedgerUpdatingKey(checkboxKey);
+
+    const response = await fetch("/api/fees/monthly-ledger", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        studentId: row.studentId,
+        feeStructureId: row.feeStructureId,
+        monthNumber: month.monthNumber,
+        year: Number(studentLedgerYear),
+        isPaid: !month.isPaid
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setStudentLedgerUpdatingKey("");
+      toast.error(result.message || "Failed to update monthly ledger.");
+      return;
+    }
+
+    await Promise.all([
+      loadStudentLedger(student, Number(studentLedgerYear)).catch((error) => toast.error(error.message)),
+      loadFeeData(student.id).catch((error) => toast.error(error.message))
+    ]);
+    setStudentLedgerUpdatingKey("");
+  }
+
   useEffect(() => {
     if (!open || !student?.id) {
       return;
@@ -443,6 +738,16 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
       toast.error(error.message);
     });
   }, [open, student?.id]);
+
+  useEffect(() => {
+    if (!open || !student?.id || activeTab !== "actions") {
+      return;
+    }
+
+    loadStudentLedger(student, Number(studentLedgerYear)).catch((error) => {
+      toast.error(error.message);
+    });
+  }, [activeTab, open, student, studentLedgerYear]);
 
   useEffect(() => {
     if (!open) {
@@ -457,7 +762,11 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
       setReceiptDialogOpen(false);
       setReceiptLoading(false);
       setReceiptData(null);
-      setReceiptTab("student");
+      setReceiptCutoffDate(getTodayInputValue());
+      setSettlingTillDate(false);
+      setStudentLedgerRows([]);
+      setStudentLedgerLoading(false);
+      setStudentLedgerUpdatingKey("");
     }
   }, [open]);
 
@@ -547,13 +856,17 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
     toast.success("Payment recorded.");
   }
 
-  async function openReceiptPreview(invoiceId) {
+  async function openReceiptPreview() {
+    if (!student?.id) {
+      return;
+    }
+
     setReceiptDialogOpen(true);
     setReceiptLoading(true);
     setReceiptData(null);
-    setReceiptTab("student");
 
-    const response = await fetch(`/api/fees/assignments/${invoiceId}`);
+    const cutoffQuery = receiptCutoffDate ? `?cutoffDate=${encodeURIComponent(receiptCutoffDate)}` : "";
+    const response = await fetch(`/api/students/${student.id}/fees${cutoffQuery}`);
     const result = await response.json().catch(() => ({}));
 
     if (!response.ok) {
@@ -562,16 +875,46 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
       return;
     }
 
-    setReceiptData(result.data);
+    setReceiptData(result.data?.consolidatedReceipt || null);
     setReceiptLoading(false);
   }
 
-  function printReceipt(copyType) {
+  async function settleTillCutoffDate() {
+    if (!student?.id) {
+      return;
+    }
+
+    setSettlingTillDate(true);
+    const response = await fetch(`/api/students/${student.id}/fees`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cutoffDate: receiptCutoffDate || undefined,
+        paymentMethod: "CASH",
+        remarks: `Settled via student modal till ${receiptCutoffDate || getTodayInputValue()}`
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    setSettlingTillDate(false);
+
+    if (!response.ok) {
+      toast.error(result.message || "Failed to settle dues.");
+      return;
+    }
+
+    toast.success(`Settled ${result.data?.settledCount || 0} invoice(s).`);
+    await Promise.all([
+      loadFeeData(student.id).catch((error) => toast.error(error.message)),
+      openReceiptPreview()
+    ]);
+  }
+
+  function printReceipt() {
     if (!receiptData) {
       return;
     }
 
-    const markup = getPrintableReceiptMarkup(receiptData, copyType);
+    const markup = getPrintableReceiptMarkup(receiptData);
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed";
     iframe.style.right = "0";
@@ -636,6 +979,19 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
               {tab.label}
             </Button>
           ))}
+          <Input
+            className="w-[170px]"
+            onChange={(event) => setReceiptCutoffDate(event.target.value)}
+            type="date"
+            value={receiptCutoffDate}
+          />
+          <Button onClick={openReceiptPreview} type="button" variant="outline">
+            <Printer className="h-4 w-4" />
+            Receipt
+          </Button>
+          <Button disabled={settlingTillDate} onClick={settleTillCutoffDate} type="button" variant="outline">
+            {settlingTillDate ? "Settling..." : "Settle Till Date"}
+          </Button>
         </div>
 
         <div className="max-h-[60vh] overflow-y-auto rounded-md border p-3">
@@ -677,7 +1033,7 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
                   <div className="rounded-md border p-3" key={invoice.id}>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <p className="font-medium">{invoice.title}</p>
+                        <p className="font-medium">{getInvoiceDisplayTitle(invoice)}</p>
                         <p className="text-xs text-muted-foreground">
                           {invoice.receiptNumber || "NA"} • Due {formatDate(invoice.dueDate)}
                         </p>
@@ -688,12 +1044,6 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
                       <div>Net: {formatCurrency(invoice.netAmount)}</div>
                       <div>Paid: {formatCurrency(invoice.totalPaid)}</div>
                       <div>Balance: {formatCurrency(invoice.balance)}</div>
-                    </div>
-                    <div className="mt-3">
-                      <Button onClick={() => openReceiptPreview(invoice.id)} size="sm" type="button" variant="outline">
-                        <Eye className="h-4 w-4" />
-                        Receipt
-                      </Button>
                     </div>
                   </div>
                 ))
@@ -726,7 +1076,7 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
           ) : null}
 
           {activeTab === "actions" ? (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4">
               <Card>
                 <CardHeader className="p-4 pb-2">
                   <CardTitle className="text-sm">Create Invoice</CardTitle>
@@ -755,7 +1105,7 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
                       <option value="">Select invoice</option>
                       {invoices.map((invoice) => (
                         <option key={invoice.id} value={invoice.id}>
-                          {invoice.title} • {formatCurrency(invoice.balance)}
+                          {getInvoiceDisplayTitle(invoice)} • {formatCurrency(invoice.balance)}
                         </option>
                       ))}
                     </Select>
@@ -774,6 +1124,72 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
                   </form>
                 </CardContent>
               </Card>
+
+              <Card>
+                <CardHeader className="p-4 pb-2">
+                  <CardTitle className="text-sm">Monthly Fee Ledger</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3 p-4 pt-0">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      min="2020"
+                      onChange={(event) => setStudentLedgerYear(event.target.value || String(new Date().getFullYear()))}
+                      type="number"
+                      value={studentLedgerYear}
+                    />
+                    <Button
+                      onClick={() =>
+                        loadStudentLedger(student, Number(studentLedgerYear)).catch((error) => toast.error(error.message))
+                      }
+                      type="button"
+                      variant="outline"
+                    >
+                      Refresh
+                    </Button>
+                  </div>
+
+                  {studentLedgerLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading monthly ledger...</p>
+                  ) : studentLedgerRows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No monthly fee structures found for this student.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {studentLedgerRows.map((row) => {
+                        const summary = getMonthlyLedgerRowSummary(row);
+                        return (
+                          <div className="rounded-md border p-3" key={`${row.studentId}-${row.feeStructureId}`}>
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <div className="font-medium">{row.feeName}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {summary.paidMonths} paid • {summary.dueMonths} due
+                              </div>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                              {row.months.map((month) => {
+                                const checkboxKey = `${row.feeStructureId}-${month.monthNumber}`;
+                                return (
+                                  <label
+                                    className={`flex cursor-pointer items-center justify-between rounded-md border px-2 py-1 text-xs ${month.isPaid ? "border-emerald-600 bg-emerald-50" : "border-border"}`}
+                                    key={`${row.feeStructureId}-${month.monthNumber}`}
+                                  >
+                                    <span>{month.label}</span>
+                                    <input
+                                      checked={month.isPaid}
+                                      disabled={studentLedgerUpdatingKey === checkboxKey}
+                                      onChange={() => toggleStudentLedgerMonth(row, month)}
+                                      type="checkbox"
+                                    />
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           ) : null}
         </div>
@@ -785,7 +1201,6 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
             if (!nextOpen) {
               setReceiptData(null);
               setReceiptLoading(false);
-              setReceiptTab("student");
             }
           }}
         >
@@ -793,33 +1208,16 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
             <DialogHeader>
               <DialogTitle>Fee Receipt Preview</DialogTitle>
               <DialogDescription>
-                Review office and student copies before printing.
+                Office and student copies are arranged on one page with a center tear line. Cutoff date: {receiptCutoffDate || "Today"}.
               </DialogDescription>
             </DialogHeader>
-
-            <div className="flex gap-2">
-              <Button
-                className="min-w-36"
-                onClick={() => setReceiptTab("student")}
-                variant={receiptTab === "student" ? "default" : "outline"}
-              >
-                Student Copy
-              </Button>
-              <Button
-                className="min-w-36"
-                onClick={() => setReceiptTab("office")}
-                variant={receiptTab === "office" ? "default" : "outline"}
-              >
-                Office Copy
-              </Button>
-            </div>
 
             {receiptLoading ? (
               <div className="rounded-md border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
                 Loading receipt preview...
               </div>
             ) : receiptData ? (
-              <ReceiptPreview copyType={receiptTab} receipt={receiptData} />
+              <ReceiptPreview receipt={receiptData} />
             ) : (
               <div className="rounded-md border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
                 Receipt preview is not available.
@@ -827,9 +1225,12 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
             )}
 
             <DialogFooter>
-              <Button disabled={!receiptData || receiptLoading} onClick={() => printReceipt(receiptTab)}>
+              <Button disabled={!receiptData || receiptLoading || settlingTillDate} onClick={settleTillCutoffDate} variant="outline">
+                {settlingTillDate ? "Settling..." : "Settle Till Date"}
+              </Button>
+              <Button disabled={!receiptData || receiptLoading} onClick={printReceipt}>
                 <Printer className="h-4 w-4" />
-                Print {receiptTab === "student" ? "Student Copy" : "Office Copy"}
+                Print Combined Receipt
               </Button>
             </DialogFooter>
           </DialogContent>

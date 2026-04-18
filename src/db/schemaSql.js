@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS students (
   institution_id CHAR(36) NOT NULL,
   admission_number VARCHAR(120) NOT NULL,
   category VARCHAR(50) NULL,
+  gender VARCHAR(20) NULL,
+  academic_year VARCHAR(120) NULL,
   first_name VARCHAR(255) NOT NULL,
   last_name VARCHAR(255) NOT NULL DEFAULT '',
   mother_name VARCHAR(255) NULL,
@@ -69,6 +71,38 @@ SET @students_add_category_sql := IF(
 PREPARE students_add_category_stmt FROM @students_add_category_sql;
 EXECUTE students_add_category_stmt;
 DEALLOCATE PREPARE students_add_category_stmt;
+
+SET @students_has_gender := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'students'
+    AND COLUMN_NAME = 'gender'
+);
+SET @students_add_gender_sql := IF(
+  @students_has_gender = 0,
+  'ALTER TABLE students ADD COLUMN gender VARCHAR(20) NULL AFTER category',
+  'SELECT 1'
+);
+PREPARE students_add_gender_stmt FROM @students_add_gender_sql;
+EXECUTE students_add_gender_stmt;
+DEALLOCATE PREPARE students_add_gender_stmt;
+
+SET @students_has_academic_year := (
+  SELECT COUNT(1)
+  FROM INFORMATION_SCHEMA.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'students'
+    AND COLUMN_NAME = 'academic_year'
+);
+SET @students_add_academic_year_sql := IF(
+  @students_has_academic_year = 0,
+  'ALTER TABLE students ADD COLUMN academic_year VARCHAR(120) NULL AFTER gender',
+  'SELECT 1'
+);
+PREPARE students_add_academic_year_stmt FROM @students_add_academic_year_sql;
+EXECUTE students_add_academic_year_stmt;
+DEALLOCATE PREPARE students_add_academic_year_stmt;
 
 SET @students_admission_index_exists := (
   SELECT COUNT(1)

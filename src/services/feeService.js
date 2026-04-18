@@ -275,6 +275,9 @@ async function findStudent(studentId, client = { query }) {
         s.*,
         i.name AS institution_name,
         i.type AS institution_type,
+        i.address AS institution_address,
+        i.contact_email AS institution_contact_email,
+        i.contact_phone AS institution_contact_phone,
         c.name AS academic_class_name,
         c.section AS academic_class_section
       FROM students s
@@ -339,6 +342,323 @@ function formatAcademicYearLabel(structure, ledgerYear) {
   return wrapsYear ? `${year}-${year + 1}` : String(year);
 }
 
+function formatInvoiceMonthLabel(invoice) {
+  const monthNumber = Number(invoice?.monthNumber || 0);
+  const ledgerYear = Number(invoice?.ledgerYear || 0);
+  if (monthNumber >= 1 && monthNumber <= 12) {
+    return `${monthLabels[monthNumber - 1]}${ledgerYear ? ` ${ledgerYear}` : ""}`;
+  }
+
+  const dueDate = invoice?.dueDate ? new Date(invoice.dueDate) : null;
+  if (dueDate && !Number.isNaN(dueDate.getTime())) {
+    return `${monthLabels[dueDate.getMonth()]} ${dueDate.getFullYear()}`;
+  }
+
+  return "";
+}
+
+function formatInvoiceLineLabel(invoice) {
+  const baseName = invoice.feeStructureName || invoice.title || "Fee";
+  const monthLabel = formatInvoiceMonthLabel(invoice);
+  if (!monthLabel) {
+    return baseName;
+  }
+
+  if (String(baseName).includes(monthLabel)) {
+    return baseName;
+  }
+
+  return `${baseName} (${monthLabel})`;
+}
+
+function dedupeOverlappingMonthlyAssignments(assignments) {
+  const dedupeMap = new Map();
+
+  for (const item of assignments) {
+    const isMonthly = Number(item.monthNumber || 0) >= 1 && Number(item.monthNumber || 0) <= 12;
+    if (!isMonthly) {
+      dedupeMap.set(`single:${item.id}`, item);
+      continue;
+    }
+
+    const key = `${item.studentId}:${item.ledgerYear || ""}:${item.monthNumber}:${formatInvoiceLineLabel(item)}`;
+    const existing = dedupeMap.get(key);
+    if (!existing) {
+      dedupeMap.set(key, item);
+      continue;
+    }
+
+    const existingHasStructure = Boolean(existing.feeStructureId);
+    const currentHasStructure = Boolean(item.feeStructureId);
+    if (!existingHasStructure && currentHasStructure) {
+      dedupeMap.set(key, item);
+      continue;
+    }
+
+    if (existingHasStructure === currentHasStructure && new Date(item.createdAt) > new Date(existing.createdAt)) {
+      dedupeMap.set(key, item);
+    }
+  }
+
+  return Array.from(dedupeMap.values());
+}
+
+async function ensureStudentMonthlyInvoicesTillDate(studentId, cutoffDate, existingClient = null) {
+  const runner = async (client) => {
+    const student = await findStudent(studentId, client);
+    if (!student.classId) {
+      return;
+    }
+
+    const structuresResult = await client.query(
+      `
+        SELECT *
+        FROM fee_structures
+        WHERE institution_id = $1
+          AND frequency = 'MONTHLY'
+          AND is_active = TRUE
+          AND (class_id = $2 OR class_id IS NULL)
+        ORDER BY name ASC
+      `,
+      [student.institutionId, student.classId]
+    );
+
+    if (structuresResult.rowCount === 0) {
+      return;
+    }
+
+    const cutoffMonthStart = new Date(cutoffDate.getFullYear(), cutoffDate.getMonth(), 1);
+
+    for (const row of structuresResult.rows) {
+      const structure = toCamelCaseRow(row);
+      const sessionYear = getCurrentSessionYear(structure, cutoffDate);
+      const sessionMonths = getSessionMonthsForYear(structure, sessionYear).filter((sessionMonth) => {
+        const monthDate = new Date(sessionMonth.calendarYear, sessionMonth.monthNumber - 1, 1);
+        return monthDate <= cutoffMonthStart;
+      });
+
+      for (const sessionMonth of sessionMonths) {
+        await ensureMonthlyInvoiceForMonth({
+          student,
+          structure,
+          sessionYear: sessionMonth.sessionYear,
+          calendarYear: sessionMonth.calendarYear,
+          monthNumber: sessionMonth.monthNumber,
+          client
+        });
+      }
+    }
+  };
+
+  if (existingClient) {
+    return runner(existingClient);
+  }
+
+  return withTransaction(runner);
+}
+
+function getYearMonthFromDateValue(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return {
+    year: date.getFullYear(),
+    month: date.getMonth() + 1
+  };
+}
+
+function resolveReceiptMonth(invoice) {
+  const ledgerYear = Number(invoice.ledgerYear || 0);
+  const monthNumber = Number(invoice.monthNumber || 0);
+  if (ledgerYear > 0 && monthNumber >= 1 && monthNumber <= 12) {
+    return {
+      year: ledgerYear,
+      month: monthNumber
+    };
+  }
+
+  const dueDateMonth = getYearMonthFromDateValue(invoice.dueDate);
+  if (dueDateMonth) {
+    return dueDateMonth;
+  }
+
+  const createdAtMonth = getYearMonthFromDateValue(invoice.createdAt);
+  if (createdAtMonth) {
+    return createdAtMonth;
+  }
+
+  const now = new Date();
+  return {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1
+  };
+}
+
+async function getStudentInvoicesForReceiptMonth(studentId, referenceInvoice) {
+  const receiptMonth = resolveReceiptMonth(referenceInvoice);
+  const result = await query(
+    `
+      SELECT
+        fi.*,
+        fs.name AS fee_structure_name,
+        COALESCE(payments.total_paid, 0) AS total_paid,
+        fi.net_amount - COALESCE(payments.total_paid, 0) AS balance
+      FROM fee_invoices fi
+      LEFT JOIN fee_structures fs ON fs.id = fi.fee_structure_id
+      LEFT JOIN (
+        SELECT fee_invoice_id, SUM(amount) AS total_paid
+        FROM fee_payments
+        GROUP BY fee_invoice_id
+      ) payments ON payments.fee_invoice_id = fi.id
+      WHERE fi.student_id = $1
+        AND (
+          (
+            fi.ledger_year IS NOT NULL
+            AND fi.month_number IS NOT NULL
+            AND fi.ledger_year = $2
+            AND fi.month_number = $3
+          )
+          OR (
+            (fi.ledger_year IS NULL OR fi.month_number IS NULL)
+            AND fi.due_date IS NOT NULL
+            AND YEAR(fi.due_date) = $2
+            AND MONTH(fi.due_date) = $3
+          )
+          OR (
+            (fi.ledger_year IS NULL OR fi.month_number IS NULL)
+            AND fi.due_date IS NULL
+            AND YEAR(fi.created_at) = $2
+            AND MONTH(fi.created_at) = $3
+          )
+        )
+      ORDER BY fi.created_at ASC
+    `,
+    [studentId, receiptMonth.year, receiptMonth.month]
+  );
+
+  const invoices = mapRows(result.rows).map((item) => ({
+    ...item,
+    status:
+      Number(item.balance) <= 0
+        ? "PAID"
+        : Number(item.totalPaid) > 0
+          ? "PARTIALLY_PAID"
+          : item.status
+  }));
+
+  const existingInvoice = invoices.find((item) => item.id === referenceInvoice.id);
+  if (!existingInvoice) {
+    invoices.unshift(referenceInvoice);
+  }
+
+  return {
+    year: receiptMonth.year,
+    month: receiptMonth.month,
+    invoices
+  };
+}
+
+async function getStudentMonthlyFeeReceiptSummary(studentId, referenceInvoice) {
+  const structuresResult = await query(
+    `
+      SELECT fs.*
+      FROM fee_structures fs
+      WHERE fs.frequency = 'MONTHLY'
+        AND (
+          EXISTS (
+            SELECT 1
+            FROM fee_invoices fi
+            WHERE fi.student_id = $1
+              AND fi.fee_structure_id = fs.id
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM monthly_fee_ledgers mfl
+            WHERE mfl.student_id = $1
+              AND mfl.fee_structure_id = fs.id
+          )
+        )
+      ORDER BY fs.name ASC
+    `,
+    [studentId]
+  );
+
+  const structures = mapRows(structuresResult.rows);
+  if (structures.length === 0) {
+    return [];
+  }
+
+  const summaries = await Promise.all(
+    structures.map(async (structure) => {
+      const ledgerYear = Number(referenceInvoice.ledgerYear || getCurrentSessionYear(structure));
+      const sessionMonths = getSessionMonthsForYear(structure, ledgerYear);
+
+      const ledgerResult = await query(
+        `
+          SELECT month_number, is_paid, paid_on
+          FROM monthly_fee_ledgers
+          WHERE student_id = $1
+            AND fee_structure_id = $2
+            AND ledger_year = $3
+        `,
+        [studentId, structure.id, ledgerYear]
+      );
+
+      const paidMap = new Map(
+        ledgerResult.rows.map((row) => [
+          Number(row.month_number),
+          {
+            isPaid: Boolean(row.is_paid),
+            paidOn: row.paid_on || null
+          }
+        ])
+      );
+
+      const months = sessionMonths.map((month) => {
+        const paidMonth = paidMap.get(month.monthNumber);
+        return {
+          monthNumber: month.monthNumber,
+          label: month.label,
+          calendarYear: month.calendarYear,
+          isPaid: Boolean(paidMonth?.isPaid),
+          paidOn: paidMonth?.paidOn || null,
+          isCurrentInvoiceMonth:
+            Number(referenceInvoice.monthNumber || 0) === Number(month.monthNumber) &&
+            referenceInvoice.feeStructureId === structure.id &&
+            Number(referenceInvoice.ledgerYear || 0) === Number(ledgerYear)
+        };
+      });
+
+      const monthlyAmount = Number(structure.amount || 0);
+      const paidMonths = months.filter((month) => month.isPaid).length;
+      const pendingMonths = months.length - paidMonths;
+
+      return {
+        feeStructureId: structure.id,
+        feeName: structure.name,
+        ledgerYear,
+        academicYear: formatAcademicYearLabel(structure, ledgerYear),
+        monthlyAmount,
+        totalMonths: months.length,
+        paidMonths,
+        pendingMonths,
+        totalAmount: monthlyAmount * months.length,
+        paidAmount: monthlyAmount * paidMonths,
+        pendingAmount: monthlyAmount * pendingMonths,
+        months
+      };
+    })
+  );
+
+  return summaries;
+}
+
 export async function getFeeInvoiceReceiptDetails(feeInvoiceId) {
   const invoice = await getFeeInvoiceById(feeInvoiceId);
   const student = await findStudent(invoice.studentId);
@@ -349,45 +669,30 @@ export async function getFeeInvoiceReceiptDetails(feeInvoiceId) {
     structure = structureResult.rowCount > 0 ? toCamelCaseRow(structureResult.rows[0]) : null;
   }
 
-  let months = [];
-  if (structure?.frequency === "MONTHLY" && invoice.ledgerYear) {
-    const sessionMonths = getSessionMonthsForYear(structure, Number(invoice.ledgerYear));
-    const ledgerResult = await query(
-      `
-        SELECT month_number, is_paid, paid_on
-        FROM monthly_fee_ledgers
-        WHERE student_id = $1
-          AND fee_structure_id = $2
-          AND ledger_year = $3
-      `,
-      [invoice.studentId, invoice.feeStructureId, invoice.ledgerYear]
-    );
-
-    const paidMap = new Map(
-      ledgerResult.rows.map((row) => [
-        Number(row.month_number),
-        {
-          isPaid: Boolean(row.is_paid),
-          paidOn: row.paid_on || null
-        }
-      ])
-    );
-
-    months = sessionMonths.map((month) => {
-      const paidMonth = paidMap.get(month.monthNumber);
-      return {
-        monthNumber: month.monthNumber,
-        label: month.label,
-        calendarYear: month.calendarYear,
-        isPaid: Boolean(paidMonth?.isPaid),
-        paidOn: paidMonth?.paidOn || null,
-        isCurrentInvoiceMonth: Number(invoice.monthNumber) === Number(month.monthNumber)
-      };
-    });
-  }
+  const monthlyFees = await getStudentMonthlyFeeReceiptSummary(invoice.studentId, invoice);
+  const currentStructureSummary = monthlyFees.find(
+    (monthlyFee) => monthlyFee.feeStructureId === invoice.feeStructureId
+  );
+  const months = currentStructureSummary?.months || [];
+  const invoiceMonthBundle = await getStudentInvoicesForReceiptMonth(invoice.studentId, invoice);
 
   return {
     invoice,
+    receiptMonth: {
+      year: invoiceMonthBundle.year,
+      month: invoiceMonthBundle.month
+    },
+    invoiceItems: invoiceMonthBundle.invoices.map((item) => ({
+      id: item.id,
+      title: item.title,
+      feeStructureName: item.feeStructureName,
+      netAmount: item.netAmount,
+      grossAmount: item.grossAmount,
+      dueDate: item.dueDate,
+      ledgerYear: item.ledgerYear,
+      monthNumber: item.monthNumber,
+      status: item.status
+    })),
     student: {
       id: student.id,
       firstName: student.firstName,
@@ -401,7 +706,10 @@ export async function getFeeInvoiceReceiptDetails(feeInvoiceId) {
     },
     institution: {
       name: student.institutionName,
-      type: student.institutionType
+      type: student.institutionType,
+      address: student.institutionAddress,
+      contactEmail: student.institutionContactEmail,
+      contactPhone: student.institutionContactPhone
     },
     feeStructure: structure
       ? {
@@ -413,6 +721,7 @@ export async function getFeeInvoiceReceiptDetails(feeInvoiceId) {
         }
       : null,
     academicYear: formatAcademicYearLabel(structure, invoice.ledgerYear),
+    monthlyFees,
     months
   };
 }
@@ -494,7 +803,7 @@ export async function listFeeStructures(filters = {}) {
 
   if (filters.classId) {
     params.push(filters.classId);
-    clauses.push(`class_id = $${params.length}`);
+    clauses.push(`(class_id = $${params.length} OR class_id IS NULL)`);
   }
 
   const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
@@ -820,7 +1129,10 @@ export async function assignClassFeesToStudent(payload, existingClient = null) {
       }
 
       if (structure.frequency === "MONTHLY") {
-        const sessionYear = getCurrentSessionYear(structure);
+        const sessionYear =
+          payload.sessionYearOverride && !Number.isNaN(Number(payload.sessionYearOverride))
+            ? Number(payload.sessionYearOverride)
+            : getCurrentSessionYear(structure);
         const sessionMonths = getSessionMonthsForYear(structure, sessionYear);
 
         for (const sessionMonth of sessionMonths) {
@@ -921,7 +1233,8 @@ export async function assignFeesToWholeClass(payload) {
         {
           studentId: studentRow.id,
           dueDate: payload.dueDate || null,
-          notes: payload.notes || null
+          notes: payload.notes || null,
+          sessionYearOverride: payload.sessionYearOverride
         },
         client
       );
@@ -1060,11 +1373,50 @@ export async function recordFeePayment(payload, existingClient = null) {
   return withTransaction(runner);
 }
 
-export async function getStudentFeeSummary(studentId) {
+export async function getStudentFeeSummary(studentId, options = {}) {
+  const cutoffDate = options.cutoffDate ? new Date(options.cutoffDate) : new Date();
+  if (Number.isNaN(cutoffDate.getTime())) {
+    throw createHttpError(400, "cutoffDate must be a valid date.");
+  }
+  cutoffDate.setHours(23, 59, 59, 999);
+
+  await ensureStudentMonthlyInvoicesTillDate(studentId, cutoffDate);
+
   const student = await findStudent(studentId);
   const assignments = await listFeeAssignments({ studentId });
 
-  const totals = assignments.reduce(
+  const paymentsAsOfCutoffResult = await query(
+    `
+      SELECT fee_invoice_id, COALESCE(SUM(amount), 0) AS total_paid
+      FROM fee_payments
+      WHERE student_id = $1
+        AND payment_date <= $2
+      GROUP BY fee_invoice_id
+    `,
+    [studentId, cutoffDate.toISOString()]
+  );
+  const paidMap = new Map(
+    paymentsAsOfCutoffResult.rows.map((row) => [row.fee_invoice_id, Number(row.total_paid || 0)])
+  );
+
+  const assignmentsAsOfCutoffRaw = assignments.map((item) => {
+    const totalPaidAsOfCutoff = paidMap.get(item.id) || 0;
+    const balanceAsOfCutoff = Number(item.netAmount || 0) - totalPaidAsOfCutoff;
+    return {
+      ...item,
+      totalPaid: totalPaidAsOfCutoff,
+      balance: balanceAsOfCutoff,
+      status:
+        balanceAsOfCutoff <= 0
+          ? "PAID"
+          : totalPaidAsOfCutoff > 0
+            ? "PARTIALLY_PAID"
+            : item.status
+    };
+  });
+  const assignmentsAsOfCutoff = dedupeOverlappingMonthlyAssignments(assignmentsAsOfCutoffRaw);
+
+  const totals = assignmentsAsOfCutoff.reduce(
     (acc, item) => {
       acc.totalAssigned += Number(item.netAmount);
       acc.totalPaid += Number(item.totalPaid);
@@ -1074,10 +1426,78 @@ export async function getStudentFeeSummary(studentId) {
     { totalAssigned: 0, totalPaid: 0, totalBalance: 0 }
   );
 
+  const pendingDueTillDate = assignmentsAsOfCutoff.filter((item) => {
+    const isPending = Number(item.balance) > 0;
+    if (!isPending) {
+      return false;
+    }
+
+    if (!item.dueDate) {
+      return true;
+    }
+
+    const dueDate = new Date(item.dueDate);
+    if (Number.isNaN(dueDate.getTime())) {
+      return true;
+    }
+
+    return dueDate <= cutoffDate;
+  });
+
+  const paidInvoices = assignmentsAsOfCutoff.filter((item) => Number(item.totalPaid) > 0);
+
+  const institutionResult = await query("SELECT * FROM institutions WHERE id = $1", [student.institutionId]);
+  const institution = institutionResult.rowCount > 0 ? toCamelCaseRow(institutionResult.rows[0]) : null;
+
+  const consolidatedReceipt = {
+    generatedOn: new Date().toISOString(),
+    cutoffDate: cutoffDate.toISOString(),
+    student: {
+      id: student.id,
+      firstName: student.firstName,
+      lastName: student.lastName,
+      admissionNumber: student.admissionNumber,
+      fatherName: student.fatherName,
+      motherName: student.motherName,
+      className: student.academicClassName || student.className,
+      section: student.academicClassSection || student.section
+    },
+    institution: {
+      name: institution?.name || student.institutionName,
+      address: institution?.address || "",
+      contactEmail: institution?.contactEmail || "",
+      contactPhone: institution?.contactPhone || ""
+    },
+    totals: {
+      totalAssigned: totals.totalAssigned,
+      totalPaid: totals.totalPaid,
+      netDue: totals.totalBalance,
+      pendingDueTillDate: pendingDueTillDate.reduce((sum, item) => sum + Number(item.balance), 0)
+    },
+    pendingDueInvoices: pendingDueTillDate.map((item) => ({
+      id: item.id,
+      label: formatInvoiceLineLabel(item),
+      dueDate: item.dueDate,
+      netAmount: Number(item.netAmount),
+      paidAmount: Number(item.totalPaid),
+      balance: Number(item.balance),
+      status: item.status
+    })),
+    paidInvoices: paidInvoices.map((item) => ({
+      id: item.id,
+      label: formatInvoiceLineLabel(item),
+      paymentAgainst: Number(item.totalPaid),
+      netAmount: Number(item.netAmount),
+      balance: Number(item.balance),
+      status: item.status
+    }))
+  };
+
   return {
     student,
     totals,
-    assignments
+    assignments: assignmentsAsOfCutoff,
+    consolidatedReceipt
   };
 }
 
@@ -1263,6 +1683,79 @@ export async function getMonthlyFeeLedger(filters = {}) {
     year,
     rows
   };
+}
+
+export async function settleStudentDuesTillDate(studentId, options = {}) {
+  const cutoffDate = options.cutoffDate ? new Date(options.cutoffDate) : new Date();
+  if (Number.isNaN(cutoffDate.getTime())) {
+    throw createHttpError(400, "cutoffDate must be a valid date.");
+  }
+  cutoffDate.setHours(23, 59, 59, 999);
+
+  return withTransaction(async (client) => {
+    await ensureStudentMonthlyInvoicesTillDate(studentId, cutoffDate, client);
+
+    const cutoffYear = cutoffDate.getFullYear();
+    const cutoffMonth = cutoffDate.getMonth() + 1;
+    const invoicesResult = await client.query(
+      `
+        SELECT id
+        FROM fee_invoices
+        WHERE student_id = $1
+          AND status IN ('PENDING', 'PARTIALLY_PAID')
+          AND (
+            (
+              ledger_year IS NOT NULL
+              AND month_number IS NOT NULL
+              AND (
+                ledger_year < $2
+                OR (ledger_year = $2 AND month_number <= $3)
+              )
+            )
+            OR (
+              (ledger_year IS NULL OR month_number IS NULL)
+              AND (
+                due_date IS NULL
+                OR due_date <= $4
+              )
+            )
+          )
+        ORDER BY created_at ASC
+      `,
+      [studentId, cutoffYear, cutoffMonth, cutoffDate.toISOString().slice(0, 10)]
+    );
+
+    let settledCount = 0;
+    let settledAmount = 0;
+    for (const row of invoicesResult.rows) {
+      const invoice = await getFeeInvoiceById(row.id, client);
+      const balance = Number(invoice.balance || 0);
+      if (balance <= 0) {
+        continue;
+      }
+
+      await recordFeePayment(
+        {
+          feeInvoiceId: invoice.id,
+          amount: balance,
+          paymentDate: cutoffDate.toISOString(),
+          paymentMethod: options.paymentMethod || "CASH",
+          remarks: options.remarks || `Settled till ${cutoffDate.toISOString().slice(0, 10)}`
+        },
+        client
+      );
+
+      settledCount += 1;
+      settledAmount += balance;
+    }
+
+    return {
+      studentId,
+      cutoffDate: cutoffDate.toISOString(),
+      settledCount,
+      settledAmount
+    };
+  });
 }
 
 export async function toggleMonthlyLedgerMonth(payload) {
