@@ -10,6 +10,35 @@ CREATE TABLE IF NOT EXISTS institutions (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS users (
+  id CHAR(36) PRIMARY KEY,
+  institution_id CHAR(36) NULL,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  password_hash TEXT NOT NULL,
+  role VARCHAR(50) NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_users_institution
+    FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE SET NULL,
+  UNIQUE KEY uq_users_email (email),
+  KEY idx_users_institution_id (institution_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id CHAR(36) PRIMARY KEY,
+  user_id CHAR(36) NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_user_sessions_user
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_user_sessions_token_hash (token_hash),
+  KEY idx_user_sessions_user_id (user_id),
+  KEY idx_user_sessions_expires_at (expires_at)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS academic_classes (
   id CHAR(36) PRIMARY KEY,
   institution_id CHAR(36) NOT NULL,

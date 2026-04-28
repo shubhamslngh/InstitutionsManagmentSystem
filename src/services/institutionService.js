@@ -6,8 +6,17 @@ import { mapRows, toCamelCaseRow } from "../utils/mappers.js";
 
 const institutionTypes = ["SCHOOL", "COLLEGE"];
 
-export async function listInstitutions() {
-  const result = await query("SELECT * FROM institutions ORDER BY created_at DESC");
+export async function listInstitutions(filters = {}) {
+  const clauses = [];
+  const params = [];
+
+  if (filters.institutionId) {
+    params.push(filters.institutionId);
+    clauses.push(`id = $${params.length}`);
+  }
+
+  const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+  const result = await query(`SELECT * FROM institutions ${whereClause} ORDER BY created_at DESC`, params);
   return mapRows(result.rows);
 }
 

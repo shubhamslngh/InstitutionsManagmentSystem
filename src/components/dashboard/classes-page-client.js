@@ -1,4 +1,4 @@
- "use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Plus, School2 } from "lucide-react";
@@ -11,12 +11,20 @@ import { EmptyState } from "./empty-state.js";
 import { MetricCard } from "./metric-card.js";
 import { Badge } from "../ui/badge.js";
 import { ClassFormDialog } from "../forms/class-form-dialog.js";
+import { can } from "../../lib/permissions.js";
 
-export function ClassesPageClient({ classes, institutions, initialError, defaultInstitutionId = "" }) {
+export function ClassesPageClient({
+  classes,
+  institutions,
+  initialError,
+  defaultInstitutionId = "",
+  currentUser
+}) {
   const [classRows, setClassRows] = useState(classes);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState(null);
   const [institutionFilter, setInstitutionFilter] = useState(defaultInstitutionId);
+  const canManageClasses = can(currentUser, "classes.manage");
 
   useEffect(() => {
     setInstitutionFilter(defaultInstitutionId);
@@ -31,6 +39,10 @@ export function ClassesPageClient({ classes, institutions, initialError, default
   );
 
   async function handleDelete(id) {
+    if (!canManageClasses) {
+      return;
+    }
+
     const response = await fetch(`/api/classes/${id}`, { method: "DELETE" });
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
@@ -76,10 +88,12 @@ export function ClassesPageClient({ classes, institutions, initialError, default
             ))}
           </Select>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Add Class
-        </Button>
+        {canManageClasses ? (
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add Class
+          </Button>
+        ) : null}
       </div>
       <Card>
         <CardHeader>
@@ -93,10 +107,12 @@ export function ClassesPageClient({ classes, institutions, initialError, default
               title="No classes available"
               description="Create academic classes for institutions so students and fee structures can be organized correctly."
               action={
-                <Button onClick={() => setDialogOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  Add Class
-                </Button>
+                canManageClasses ? (
+                  <Button onClick={() => setDialogOpen(true)}>
+                    <Plus className="h-4 w-4" />
+                    Add Class
+                  </Button>
+                ) : null
               }
             />
           ) : (
@@ -121,26 +137,28 @@ export function ClassesPageClient({ classes, institutions, initialError, default
                     <p>Capacity</p>
                     <p className="font-medium text-foreground">{item.capacity || "NA"}</p>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setEditingClass(item);
-                        setDialogOpen(true);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    <ConfirmDialog
-                      description={`Delete ${item.name}${item.section ? ` - ${item.section}` : ""}?`}
-                      onConfirm={() => handleDelete(item.id)}
-                    >
-                      <Button size="sm" variant="destructive">
-                        Delete
+                  {canManageClasses ? (
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingClass(item);
+                          setDialogOpen(true);
+                        }}
+                      >
+                        Edit
                       </Button>
-                    </ConfirmDialog>
-                  </div>
+                      <ConfirmDialog
+                        description={`Delete ${item.name}${item.section ? ` - ${item.section}` : ""}?`}
+                        onConfirm={() => handleDelete(item.id)}
+                      >
+                        <Button size="sm" variant="destructive">
+                          Delete
+                        </Button>
+                      </ConfirmDialog>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ))

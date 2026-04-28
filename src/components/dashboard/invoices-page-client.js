@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "../ui/dialog.js";
+import { can } from "../../lib/permissions.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -354,7 +355,7 @@ function ReceiptPreview({ receipt, copyType }) {
   );
 }
 
-export function InvoicesPageClient({ initialInvoices, students, institutions }) {
+export function InvoicesPageClient({ initialInvoices, students, institutions, currentUser }) {
   const [invoices, setInvoices] = useState(initialInvoices);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
@@ -363,6 +364,7 @@ export function InvoicesPageClient({ initialInvoices, students, institutions }) 
   const [receiptData, setReceiptData] = useState(null);
   const [receiptTab, setReceiptTab] = useState("student");
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState([]);
+  const canManageFees = can(currentUser, "fees.manage");
 
   const totals = useMemo(() => {
     return invoices.reduce(
@@ -377,6 +379,10 @@ export function InvoicesPageClient({ initialInvoices, students, institutions }) 
   }, [invoices]);
 
   async function handleDelete(id) {
+    if (!canManageFees) {
+      return;
+    }
+
     const response = await fetch(`/api/fees/assignments/${id}`, { method: "DELETE" });
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
@@ -390,6 +396,10 @@ export function InvoicesPageClient({ initialInvoices, students, institutions }) 
   }
 
   async function handleBulkDelete() {
+    if (!canManageFees) {
+      return;
+    }
+
     const deleteResults = await Promise.all(
       selectedInvoiceIds.map(async (id) => {
         const response = await fetch(`/api/fees/assignments/${id}`, { method: "DELETE" });
@@ -606,25 +616,29 @@ export function InvoicesPageClient({ initialInvoices, students, institutions }) 
             <Eye className="h-4 w-4" />
             Receipt
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setEditingInvoice(row.original);
-              setDialogOpen(true);
-            }}
-            type="button"
-          >
-            Edit
-          </Button>
-          <ConfirmDialog
-            description={`Delete invoice ${row.original.title}?`}
-            onConfirm={() => handleDelete(row.original.id)}
-          >
-            <Button size="sm" type="button" variant="destructive">
-              Delete
-            </Button>
-          </ConfirmDialog>
+          {canManageFees ? (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingInvoice(row.original);
+                  setDialogOpen(true);
+                }}
+                type="button"
+              >
+                Edit
+              </Button>
+              <ConfirmDialog
+                description={`Delete invoice ${row.original.title}?`}
+                onConfirm={() => handleDelete(row.original.id)}
+              >
+                <Button size="sm" type="button" variant="destructive">
+                  Delete
+                </Button>
+              </ConfirmDialog>
+            </>
+          ) : null}
         </div>
       )
     }
@@ -638,19 +652,21 @@ export function InvoicesPageClient({ initialInvoices, students, institutions }) 
         <MetricCard icon={ReceiptText} label="Open Balance" value={formatCurrency(totals.balance)} tone="danger" />
       </div>
 
-      <div className="flex justify-end">
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Create Invoice
-        </Button>
-      </div>
+      {canManageFees ? (
+        <div className="flex justify-end">
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Create Invoice
+          </Button>
+        </div>
+      ) : null}
 
       <DataTable
         title="Invoice Ledger"
         columns={columns}
         data={invoices}
-        actions={
-          selectedInvoiceIds.length > 0 ? (
+          actions={
+          canManageFees && selectedInvoiceIds.length > 0 ? (
             <ConfirmDialog
               description={`Delete ${selectedInvoiceIds.length} selected invoice(s)?`}
               onConfirm={handleBulkDelete}
@@ -666,18 +682,20 @@ export function InvoicesPageClient({ initialInvoices, students, institutions }) 
         emptyDescription="Create a fee invoice to start tracking gross, discount, paid amount, and balance."
       />
 
-      <InvoiceFormDialog
-        open={dialogOpen}
-        onOpenChange={(nextOpen) => {
-          setDialogOpen(nextOpen);
-          if (!nextOpen) {
-            setEditingInvoice(null);
-          }
-        }}
-        initialValues={editingInvoice}
-        students={students}
-        onSuccess={handleSuccess}
-      />
+      {canManageFees ? (
+        <InvoiceFormDialog
+          open={dialogOpen}
+          onOpenChange={(nextOpen) => {
+            setDialogOpen(nextOpen);
+            if (!nextOpen) {
+              setEditingInvoice(null);
+            }
+          }}
+          initialValues={editingInvoice}
+          students={students}
+          onSuccess={handleSuccess}
+        />
+      ) : null}
 
       <Dialog
         open={receiptDialogOpen}

@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   Menu,
   School,
+  ShieldCheck,
   UserCircle2
 } from "lucide-react";
 import { Breadcrumb } from "../ui/breadcrumb.js";
@@ -28,12 +29,14 @@ import {
 } from "../ui/dropdown-menu.js";
 import { Select } from "../ui/select.js";
 import { cn } from "../../lib/utils.js";
+import { canAccessPath } from "../../lib/permissions.js";
 
 const navigation = [
   { href: "/", label: "Overview", icon: Home },
   { href: "/institutions", label: "Institutions", icon: Building2 },
   { href: "/classes", label: "Classes", icon: School },
   { href: "/students", label: "Students", icon: GraduationCap },
+  { href: "/users", label: "Users & Roles", icon: ShieldCheck },
   { href: "/fees", label: "Fees Dashboard", icon: LayoutGrid },
   { href: "/fees/invoices", label: "Invoices", icon: CreditCard }
 ];
@@ -43,11 +46,12 @@ const titleMap = {
   "/institutions": "Institutions",
   "/classes": "Classes",
   "/students": "Students",
+  "/users": "Users & Roles",
   "/fees": "Fees Dashboard",
   "/fees/invoices": "Invoices"
 };
 
-export function DashboardShell({ children, institutions = [] }) {
+export function DashboardShell({ children, institutions = [], currentUser }) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -73,7 +77,9 @@ export function DashboardShell({ children, institutions = [] }) {
   }, [pathname]);
 
   const preservedNavigation = useMemo(() => {
-    return navigation.map((item) => {
+    return navigation
+      .filter((item) => canAccessPath(currentUser, item.href))
+      .map((item) => {
       const params = new URLSearchParams();
       if (currentInstitutionId) {
         params.set("institutionId", currentInstitutionId);
@@ -85,7 +91,7 @@ export function DashboardShell({ children, institutions = [] }) {
         href: queryString ? `${item.href}?${queryString}` : item.href
       };
     });
-  }, [currentInstitutionId]);
+  }, [currentInstitutionId, currentUser]);
 
   function handleInstitutionChange(value) {
     const params = new URLSearchParams(searchParams.toString());
@@ -281,15 +287,24 @@ export function DashboardShell({ children, institutions = [] }) {
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline">
                     <UserCircle2 className="h-4 w-4" />
-                    Admin
+                    {currentUser?.name || "Account"}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem>Institution Settings</DropdownMenuItem>
-                  <DropdownMenuItem>Billing & Plans</DropdownMenuItem>
-                  <DropdownMenuItem>Sign out</DropdownMenuItem>
+                  <DropdownMenuItem disabled>{currentUser?.email || "No email"}</DropdownMenuItem>
+                  <DropdownMenuItem disabled>{currentUser?.role || "No role"}</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={async () => {
+                      await fetch("/api/auth/logout", { method: "POST" });
+                      router.push("/login");
+                      router.refresh();
+                    }}
+                  >
+                    Sign out
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

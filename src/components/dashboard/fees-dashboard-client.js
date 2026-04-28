@@ -16,6 +16,7 @@ import { Select } from "../ui/select.js";
 import { Skeleton } from "../ui/skeleton.js";
 import { formatCurrency } from "../../lib/currency.js";
 import { formatDate } from "../../lib/dateFormat.js";
+import { can } from "../../lib/permissions.js";
 
 export function FeesDashboardClient({
   invoices,
@@ -23,7 +24,8 @@ export function FeesDashboardClient({
   institutions,
   classes,
   structures,
-  defaultInstitutionId = ""
+  defaultInstitutionId = "",
+  currentUser
 }) {
   const [invoiceRows, setInvoiceRows] = useState(invoices);
   const [paymentRows] = useState(payments);
@@ -45,6 +47,7 @@ export function FeesDashboardClient({
     notes: ""
   });
   const [generatingClassFees, setGeneratingClassFees] = useState(false);
+  const canManageFees = can(currentUser, "fees.manage");
   const monthNames = [
     "Jan",
     "Feb",
@@ -178,6 +181,10 @@ export function FeesDashboardClient({
   }
 
   async function toggleLedgerMonth(row, month) {
+    if (!canManageFees) {
+      return;
+    }
+
     const key = `${row.studentId}-${row.feeStructureId}-${month.monthNumber}`;
     setLedgerUpdatingKey(key);
 
@@ -212,6 +219,10 @@ export function FeesDashboardClient({
   }
 
   async function handleDeleteLedger(row) {
+    if (!canManageFees) {
+      return;
+    }
+
     const response = await fetch("/api/fees/monthly-ledger", {
       method: "DELETE",
       headers: {
@@ -254,6 +265,10 @@ export function FeesDashboardClient({
 
   async function handleGenerateClassFees(event) {
     event.preventDefault();
+    if (!canManageFees) {
+      return;
+    }
+
     if (!classBillingForm.classId) {
       toast.error("Select a class first.");
       return;
@@ -323,6 +338,10 @@ export function FeesDashboardClient({
   }
 
   async function handleDeleteStructure(id) {
+    if (!canManageFees) {
+      return;
+    }
+
     const response = await fetch(`/api/fees/structures/${id}`, { method: "DELETE" });
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
@@ -422,10 +441,12 @@ export function FeesDashboardClient({
               Create tuition structures for a whole institution or bind them to a specific class.
             </p>
           </div>
-          <Button onClick={() => setStructureDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add Fee Structure
-          </Button>
+          {canManageFees ? (
+            <Button onClick={() => setStructureDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add Fee Structure
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
           {structureRows.length === 0 ? (
@@ -456,26 +477,28 @@ export function FeesDashboardClient({
                       : ""}
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setEditingStructure(structure);
-                      setStructureDialogOpen(true);
-                    }}
-                  >
-                    Edit
-                  </Button>
-                  <ConfirmDialog
-                    description={`Delete fee structure ${structure.name}?`}
-                    onConfirm={() => handleDeleteStructure(structure.id)}
-                  >
-                    <Button size="sm" variant="destructive">
-                      Delete
+                {canManageFees ? (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingStructure(structure);
+                        setStructureDialogOpen(true);
+                      }}
+                    >
+                      Edit
                     </Button>
-                  </ConfirmDialog>
-                </div>
+                    <ConfirmDialog
+                      description={`Delete fee structure ${structure.name}?`}
+                      onConfirm={() => handleDeleteStructure(structure.id)}
+                    >
+                      <Button size="sm" variant="destructive">
+                        Delete
+                      </Button>
+                    </ConfirmDialog>
+                  </div>
+                ) : null}
               </div>
             ))
           )}
@@ -533,9 +556,11 @@ export function FeesDashboardClient({
                 }))
               }
             />
-            <Button disabled={generatingClassFees} type="submit">
-              {generatingClassFees ? "Generating..." : "Generate Whole Class Fees"}
-            </Button>
+            {canManageFees ? (
+              <Button disabled={generatingClassFees} type="submit">
+                {generatingClassFees ? "Generating..." : "Generate Whole Class Fees"}
+              </Button>
+            ) : null}
             <div className="md:col-span-4">
               <Input
                 placeholder="Optional note for generated invoices"
@@ -662,15 +687,17 @@ export function FeesDashboardClient({
                       <td className="px-4 py-3 whitespace-nowrap text-emerald-600">{formatCurrency(summary.totalPaid)}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-red-600">{formatCurrency(summary.balance)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <ConfirmDialog
-                          description={`Delete the fee ledger and generated month-wise invoices for ${row.studentName}?`}
-                          onConfirm={() => handleDeleteLedger(row)}
-                        >
-                          <Button size="sm" variant="destructive">
-                            <Trash2 className="h-4 w-4" />
-                            Delete
-                          </Button>
-                        </ConfirmDialog>
+                        {canManageFees ? (
+                          <ConfirmDialog
+                            description={`Delete the fee ledger and generated month-wise invoices for ${row.studentName}?`}
+                            onConfirm={() => handleDeleteLedger(row)}
+                          >
+                            <Button size="sm" variant="destructive">
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </Button>
+                          </ConfirmDialog>
+                        ) : null}
                       </td>
                       {row.months.map((month) => {
                         const checkboxKey = `${row.studentId}-${row.feeStructureId}-${month.monthNumber}`;
@@ -681,8 +708,12 @@ export function FeesDashboardClient({
                               <input
                                 checked={month.isPaid}
                                 className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
-                                disabled={ledgerUpdatingKey === checkboxKey}
-                                onChange={() => toggleLedgerMonth(row, month)}
+                                disabled={!canManageFees || ledgerUpdatingKey === checkboxKey}
+                                onChange={() => {
+                                  if (canManageFees) {
+                                    toggleLedgerMonth(row, month);
+                                  }
+                                }}
                                 type="checkbox"
                               />
                             </label>

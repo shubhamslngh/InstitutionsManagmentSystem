@@ -1,5 +1,6 @@
 import { ensureSchema } from "../../../../db/ensureSchema.js";
 import { deleteStudent, getStudentById, updateStudent } from "../../../../services/studentService.js";
+import { assertApiInstitutionAccess, requireApiPermission } from "../../../../lib/apiAuth.js";
 import { failure, noContent, success } from "../../../../utils/api.js";
 
 export const runtime = "nodejs";
@@ -11,6 +12,9 @@ async function getStudentId(params) {
 
 async function handleUpdate(request, params) {
   await ensureSchema();
+  const user = await requireApiPermission(request, "students.manage");
+  const currentStudent = await getStudentById(await getStudentId(params));
+  assertApiInstitutionAccess(user, currentStudent.institutionId);
   const body = await request.json();
   return success(await updateStudent(await getStudentId(params), body));
 }
@@ -18,7 +22,10 @@ async function handleUpdate(request, params) {
 export async function GET(request, { params }) {
   try {
     await ensureSchema();
-    return success(await getStudentById(await getStudentId(params)));
+    const user = await requireApiPermission(request, "students.read");
+    const student = await getStudentById(await getStudentId(params));
+    assertApiInstitutionAccess(user, student.institutionId);
+    return success(student);
   } catch (error) {
     return failure(error);
   }
@@ -43,7 +50,10 @@ export async function POST(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     await ensureSchema();
-    await deleteStudent(await getStudentId(params));
+    const user = await requireApiPermission(request, "students.manage");
+    const student = await getStudentById(await getStudentId(params));
+    assertApiInstitutionAccess(user, student.institutionId);
+    await deleteStudent(student.id);
     return noContent();
   } catch (error) {
     return failure(error);

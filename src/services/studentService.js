@@ -14,6 +14,42 @@ function getAcademicYearStart(academicYear) {
   return match ? Number(match[1]) : null;
 }
 
+function canIgnoreClassFeeAssignmentError(error) {
+  const message = String(error?.message || "");
+  return (
+    (error?.status === 404 || error?.statusCode === 404) &&
+    message.includes("No active fee structures found for the student's class.")
+  );
+}
+
+function getNextAcademicYearLabel(academicYear) {
+  const value = String(academicYear || "").trim();
+  const match = value.match(/^(\d{4})(?:\s*-\s*(\d{2,4}))?$/);
+
+  if (!match) {
+    const currentYear = new Date().getFullYear();
+    return `${currentYear}-${currentYear + 1}`;
+  }
+
+  const startYear = Number(match[1]);
+  const endToken = match[2];
+
+  if (!endToken) {
+    return `${startYear + 1}`;
+  }
+
+  const endYear =
+    endToken.length === 2
+      ? Number(`${String(startYear).slice(0, 2)}${endToken}`)
+      : Number(endToken);
+  const nextStartYear = startYear + 1;
+  const nextEndYear = endYear + 1;
+
+  return endToken.length === 2
+    ? `${nextStartYear}-${String(nextEndYear).slice(-2)}`
+    : `${nextStartYear}-${nextEndYear}`;
+}
+
 function normalizeValue(value) {
   return typeof value === "string" ? value.trim() : value;
 }
@@ -588,13 +624,19 @@ export async function createStudent(payload) {
     }
 
     if (payload.classId) {
-      await assignClassFeesToStudent(
-        {
-          studentId,
-          sessionYearOverride: getAcademicYearStart(payload.academicYear)
-        },
-        client
-      );
+      try {
+        await assignClassFeesToStudent(
+          {
+            studentId,
+            sessionYearOverride: getAcademicYearStart(payload.academicYear)
+          },
+          client
+        );
+      } catch (error) {
+        if (!canIgnoreClassFeeAssignmentError(error)) {
+          throw error;
+        }
+      }
     }
 
     const studentResult = await client.query("SELECT * FROM students WHERE id = $1", [studentId]);
@@ -680,15 +722,21 @@ export async function updateStudent(studentId, payload) {
     }
 
     if (nextClassId) {
-      await assignClassFeesToStudent(
-        {
-          studentId,
-          sessionYearOverride: getAcademicYearStart(
-            payload.academicYear?.trim() ?? currentStudent.academicYear
-          )
-        },
-        client
-      );
+      try {
+        await assignClassFeesToStudent(
+          {
+            studentId,
+            sessionYearOverride: getAcademicYearStart(
+              payload.academicYear?.trim() ?? currentStudent.academicYear
+            )
+          },
+          client
+        );
+      } catch (error) {
+        if (!canIgnoreClassFeeAssignmentError(error)) {
+          throw error;
+        }
+      }
     }
 
     const updatedStudentResult = await client.query("SELECT * FROM students WHERE id = $1", [studentId]);
@@ -699,4 +747,115 @@ export async function updateStudent(studentId, payload) {
 export async function deleteStudent(studentId) {
   await getStudentById(studentId);
   await query("DELETE FROM students WHERE id = $1", [studentId]);
+}
+
+export async function promoteStudents(payload) {
+  const studentIds = Array.isArray(payload?.studentIds)
+    ? payload.studentIds.map((studentId) => normalizeValue(studentId)).filter(Boolean)
+    : [];
+  const targetClassId = normalizeValue(payload?.targetClassId ?? "");
+  const academicYear = normalizeValue(payload?.academicYear ?? "");
+  const assignClassFees = payload?.assignClassFees !== false;
+
+  if (studentIds.length === 0) {
+    throw createHttpError(400, "Select at least one student to promote.");
+  }
+
+  if (!targetClassId) {
+    throw createHttpError(400, "Target class is required.");
+  }
+
+  const uniqueStudentIds = Array.from(new Set(studentIds));
+
+  return withTransaction(async (client) => {
+    const targetClassResult = await client.query(
+      `
+        SELECT id, institution_id, name, section, academic_year
+        FROM academic_classes
+        WHERE id = $1
+      `,
+      [targetClassId]
+    );
+
+    if (targetClassResult.rowCount === 0) {
+      throw createHttpError(404, "Target class not found.");
+    }
+
+    const targetClass = toCamelCaseRow(targetClassResult.rows[0]);
+    const studentIdPlaceholders = uniqueStudentIds.map((_, index) => `$${index + 1}`).join(", ");
+    const studentsResult = await client.query(
+      `
+        SELECT *
+        FROM students
+        WHERE id IN (${studentIdPlaceholders})
+        ORDER BY admission_number ASC, created_at ASC
+      `,
+      uniqueStudentIds
+    );
+
+    if (studentsResult.rowCount !== uniqueStudentIds.length) {
+      throw createHttpError(404, "One or more selected students were not found.");
+    }
+
+    const students = mapRows(studentsResult.rows);
+    const institutionIds = new Set(students.map((student) => student.institutionId));
+
+    if (institutionIds.size !== 1 || !institutionIds.has(targetClass.institutionId)) {
+      throw createHttpError(400, "Students can only be promoted to a class in the same institution.");
+    }
+
+    const promotedStudents = [];
+    let feeInvoicesCreated = 0;
+
+    for (const student of students) {
+      const nextAcademicYear = academicYear || targetClass.academicYear || getNextAcademicYearLabel(student.academicYear);
+
+      await client.query(
+        `
+          UPDATE students
+          SET
+            academic_year = $2,
+            class_name = $3,
+            class_id = $4,
+            section = $5,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1
+        `,
+        [
+          student.id,
+          nextAcademicYear,
+          targetClass.name,
+          targetClass.id,
+          targetClass.section || null
+        ]
+      );
+
+      if (assignClassFees) {
+        try {
+          const feeAssignment = await assignClassFeesToStudent(
+            {
+              studentId: student.id,
+              sessionYearOverride: getAcademicYearStart(nextAcademicYear)
+            },
+            client
+          );
+          feeInvoicesCreated += feeAssignment.createdCount;
+        } catch (error) {
+          if (!canIgnoreClassFeeAssignmentError(error)) {
+            throw error;
+          }
+        }
+      }
+
+      const updatedStudentResult = await client.query("SELECT * FROM students WHERE id = $1", [student.id]);
+      promotedStudents.push(toCamelCaseRow(updatedStudentResult.rows[0]));
+    }
+
+    return {
+      promotedCount: promotedStudents.length,
+      feeInvoicesCreated,
+      students: promotedStudents,
+      targetClass
+    };
+  });
 }

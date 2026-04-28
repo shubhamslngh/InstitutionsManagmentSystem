@@ -3,24 +3,26 @@ import { listClasses } from "../../../services/classService.js";
 import { listFeeAssignments, listFeeStructures, listPayments } from "../../../services/feeService.js";
 import { listInstitutions } from "../../../services/institutionService.js";
 import { FeesDashboardClient } from "../../../components/dashboard/fees-dashboard-client.js";
+import { getScopedInstitutionId, requireDashboardUser } from "../../../lib/auth.js";
 
 export const dynamic = "force-dynamic";
 
 export default async function FeesPage({ searchParams }) {
+  const user = await requireDashboardUser("fees.read");
   let invoices = [];
   let payments = [];
   let institutions = [];
   let classes = [];
   let structures = [];
   const params = await searchParams;
-  const institutionId = params?.institutionId || undefined;
+  const institutionId = getScopedInstitutionId(user, params?.institutionId || undefined);
 
   try {
     await ensureSchema();
     [invoices, payments, institutions, classes, structures] = await Promise.all([
       listFeeAssignments({ institutionId }),
       listPayments({ institutionId }),
-      listInstitutions(),
+      listInstitutions({ institutionId: getScopedInstitutionId(user, undefined) }),
       listClasses({ institutionId }),
       listFeeStructures({ institutionId })
     ]);
@@ -34,6 +36,7 @@ export default async function FeesPage({ searchParams }) {
 
   return (
     <FeesDashboardClient
+      currentUser={user}
       invoices={invoices}
       payments={payments}
       institutions={institutions}

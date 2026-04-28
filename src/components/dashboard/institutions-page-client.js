@@ -10,13 +10,19 @@ import { MetricCard } from "./metric-card.js";
 import { StatusBadge } from "./status-badge.js";
 import { InstitutionFormDialog } from "../forms/institution-form-dialog.js";
 import { ConfirmDialog } from "./confirm-dialog.js";
+import { can } from "../../lib/permissions.js";
 
-export function InstitutionsPageClient({ initialInstitutions, initialError }) {
+export function InstitutionsPageClient({ initialInstitutions, initialError, currentUser }) {
   const [institutions, setInstitutions] = useState(initialInstitutions);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingInstitution, setEditingInstitution] = useState(null);
+  const canManageInstitutions = can(currentUser, "institutions.manage");
 
   async function handleDelete(id) {
+    if (!canManageInstitutions) {
+      return;
+    }
+
     const response = await fetch(`/api/institutions/${id}`, { method: "DELETE" });
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
@@ -58,10 +64,12 @@ export function InstitutionsPageClient({ initialInstitutions, initialError }) {
             Create and manage schools and colleges from a single institutional registry.
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Add Institution
-        </Button>
+        {canManageInstitutions ? (
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add Institution
+          </Button>
+        ) : null}
       </div>
 
       {initialError ? (
@@ -73,10 +81,12 @@ export function InstitutionsPageClient({ initialInstitutions, initialError }) {
           title="No institutions yet"
           description="Start by adding your first school or college to unlock admissions and fee operations."
           action={
-            <Button onClick={() => setDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Add Institution
-            </Button>
+            canManageInstitutions ? (
+              <Button onClick={() => setDialogOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Add Institution
+              </Button>
+            ) : null
           }
         />
       ) : (
@@ -108,26 +118,28 @@ export function InstitutionsPageClient({ initialInstitutions, initialError }) {
                     <dd className="max-w-48 text-right font-medium">{institution.address || "NA"}</dd>
                   </div>
                 </dl>
-                <div className="flex gap-2">
-                  <Button
-                    className="flex-1"
-                    variant="outline"
-                    onClick={() => {
-                      setEditingInstitution(institution);
-                      setDialogOpen(true);
-                    }}
-                  >
-                    Edit
-                  </Button>
-                  <ConfirmDialog
-                    description={`Delete ${institution.name} from the institution registry?`}
-                    onConfirm={() => handleDelete(institution.id)}
-                  >
-                    <Button className="flex-1" variant="destructive">
-                      Delete
+                {canManageInstitutions ? (
+                  <div className="flex gap-2">
+                    <Button
+                      className="flex-1"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingInstitution(institution);
+                        setDialogOpen(true);
+                      }}
+                    >
+                      Edit
                     </Button>
-                  </ConfirmDialog>
-                </div>
+                    <ConfirmDialog
+                      description={`Delete ${institution.name} from the institution registry?`}
+                      onConfirm={() => handleDelete(institution.id)}
+                    >
+                      <Button className="flex-1" variant="destructive">
+                        Delete
+                      </Button>
+                    </ConfirmDialog>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           ))}

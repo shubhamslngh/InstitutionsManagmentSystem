@@ -12,6 +12,7 @@ import {
 import { ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal } from "lucide-react";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { cn } from "../../lib/utils.js";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -37,7 +38,12 @@ export function DataTable({
   emptyTitle = "No records found",
   emptyDescription = "There is nothing to show yet.",
   actions,
-  loading = false
+  loading = false,
+  cardClassName,
+  headerClassName,
+  contentClassName,
+  tableWrapperClassName,
+  footerClassName
 }) {
   const [sorting, setSorting] = useState([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -67,8 +73,8 @@ export function DataTable({
   );
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col gap-4 border-b border-border/80 md:flex-row md:items-center md:justify-between">
+    <Card className={cardClassName}>
+      <CardHeader className={cn("flex flex-col gap-4 border-b border-border/80 md:flex-row md:items-center md:justify-between", headerClassName)}>
         <div className="space-y-1">
           <CardTitle>{title}</CardTitle>
         </div>
@@ -105,8 +111,8 @@ export function DataTable({
           {actions}
         </div>
       </CardHeader>
-      <CardContent className="p-0">
-        <div className="max-h-[560px] overflow-auto">
+      <CardContent className={cn("p-0", contentClassName)}>
+        <div className={cn("max-h-[560px] overflow-auto", tableWrapperClassName)}>
           <Table>
             <TableHeader className="sticky top-0 z-10 bg-card">
               {table.getHeaderGroups().map((headerGroup) => (
@@ -155,7 +161,7 @@ export function DataTable({
             </TableBody>
           </Table>
         </div>
-        <div className="flex flex-col gap-3 border-t border-border/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className={cn("flex flex-col gap-3 border-t border-border/80 px-6 py-4 sm:flex-row sm:items-center sm:justify-between", footerClassName)}>
           <p className="text-sm text-muted-foreground">
             Showing {table.getRowModel().rows.length} of {data.length} record(s)
           </p>
