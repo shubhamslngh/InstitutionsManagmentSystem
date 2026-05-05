@@ -1,17 +1,42 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, School2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, Plus, School2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button.js";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import { Badge } from "../ui/badge.js";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card.js";
 import { Select } from "../ui/select.js";
 import { ConfirmDialog } from "./confirm-dialog.js";
 import { EmptyState } from "./empty-state.js";
 import { MetricCard } from "./metric-card.js";
-import { Badge } from "../ui/badge.js";
 import { ClassFormDialog } from "../forms/class-form-dialog.js";
 import { can } from "../../lib/permissions.js";
+
+function getAcademicYearStart(academicYear) {
+  const match = String(academicYear || "").match(/^(\d{4})/);
+  return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+}
+
+function getClassLabel(item) {
+  return item.section ? `${item.name} - ${item.section}` : item.name;
+}
+
+function buildStudentLink(institutionId, classId) {
+  const params = new URLSearchParams();
+
+  if (institutionId) {
+    params.set("institutionId", institutionId);
+  }
+
+  if (classId) {
+    params.set("classId", classId);
+  }
+
+  const query = params.toString();
+  return query ? `/students?${query}` : "/students";
+}
 
 export function ClassesPageClient({
   classes,
@@ -20,11 +45,13 @@ export function ClassesPageClient({
   defaultInstitutionId = "",
   currentUser
 }) {
+  const router = useRouter();
   const [classRows, setClassRows] = useState(classes);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState(null);
   const [institutionFilter, setInstitutionFilter] = useState(defaultInstitutionId);
   const canManageClasses = can(currentUser, "classes.manage");
+  const canManageStudents = can(currentUser, "students.manage");
 
   useEffect(() => {
     setInstitutionFilter(defaultInstitutionId);
@@ -37,6 +64,33 @@ export function ClassesPageClient({
         : classRows,
     [classRows, institutionFilter]
   );
+
+  const groupedClasses = useMemo(() => {
+    const buckets = new Map();
+
+    filteredClasses
+      .slice()
+      .sort((left, right) => {
+        const yearCompare = getAcademicYearStart(right.academicYear) - getAcademicYearStart(left.academicYear);
+        if (yearCompare !== 0) {
+          return yearCompare;
+        }
+
+        return getClassLabel(left).localeCompare(getClassLabel(right), undefined, {
+          numeric: true,
+          sensitivity: "base"
+        });
+      })
+      .forEach((item) => {
+        const yearKey = item.academicYear || "Academic Year Not Set";
+        if (!buckets.has(yearKey)) {
+          buckets.set(yearKey, []);
+        }
+        buckets.get(yearKey).push(item);
+      });
+
+    return Array.from(buckets.entries());
+  }, [filteredClasses]);
 
   async function handleDelete(id) {
     if (!canManageClasses) {
@@ -64,6 +118,14 @@ export function ClassesPageClient({
       return [nextClass, ...current];
     });
     setEditingClass(null);
+  }
+
+  function enrollStudentsForClass(academicClass) {
+    if (!canManageStudents) {
+      return;
+    }
+
+    router.push(buildStudentLink(academicClass.institutionId, academicClass.id));
   }
 
   return (
@@ -116,52 +178,88 @@ export function ClassesPageClient({
               }
             />
           ) : (
-            filteredClasses.map((item) => (
-              <div className="flex flex-col gap-3 rounded-md border p-4 md:flex-row md:items-center md:justify-between" key={item.id}>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium">
-                      {item.name}
-                    </p>
-                    {item.section ? <Badge variant="secondary">{item.section}</Badge> : null}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {item.institutionName}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {item.academicYear || "Academic year NA"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right text-sm text-muted-foreground">
-                    <p>Capacity</p>
-                    <p className="font-medium text-foreground">{item.capacity || "NA"}</p>
-                  </div>
-                  {canManageClasses ? (
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setEditingClass(item);
-                          setDialogOpen(true);
-                        }}
-                      >
-                        Edit
-                      </Button>
-                      <ConfirmDialog
-                        description={`Delete ${item.name}${item.section ? ` - ${item.section}` : ""}?`}
-                        onConfirm={() => handleDelete(item.id)}
-                      >
-                        <Button size="sm" variant="destructive">
-                          Delete
-                        </Button>
-                      </ConfirmDialog>
+            <div className="space-y-6">
+              {groupedClasses.map(([academicYear, academicClasses]) => (
+                <section className="space-y-3" key={academicYear}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-semibold">{academicYear}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {academicClasses.length} class{academicClasses.length === 1 ? "" : "es"} in this academic year.
+                      </p>
                     </div>
-                  ) : null}
-                </div>
-              </div>
-            ))
+                    <Badge variant="outline">{academicClasses.length} classes</Badge>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {academicClasses.map((item) => (
+                      <Card className="border-slate-200/80 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md" key={item.id}>
+                        <CardHeader className="space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <CardTitle className="text-base">
+                                {item.name}
+                                {item.section ? <span className="ml-2 align-middle text-sm font-medium text-muted-foreground">- {item.section}</span> : null}
+                              </CardTitle>
+                              <CardDescription>{item.institutionName}</CardDescription>
+                            </div>
+                            <Badge variant="secondary">{item.capacity || "NA"} seats</Badge>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge variant="outline">{item.academicYear || "Academic year NA"}</Badge>
+                            {item.section ? <Badge variant="secondary">{item.section}</Badge> : null}
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div className="rounded-lg bg-muted/40 p-3">
+                              <p className="text-xs uppercase tracking-wide text-muted-foreground">Institution</p>
+                              <p className="mt-1 font-medium text-foreground">{item.institutionName}</p>
+                            </div>
+                            <div className="rounded-lg bg-muted/40 p-3">
+                              <p className="text-xs uppercase tracking-wide text-muted-foreground">Capacity</p>
+                              <p className="mt-1 font-medium text-foreground">{item.capacity || "NA"}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2">
+                            {canManageStudents ? (
+                              <Button className="flex-1" onClick={() => enrollStudentsForClass(item)} type="button">
+                                <Users className="h-4 w-4" />
+                                Enroll Students
+                                <ArrowRight className="h-4 w-4" />
+                              </Button>
+                            ) : null}
+                            {canManageClasses ? (
+                              <Button
+                                className="flex-1"
+                                onClick={() => {
+                                  setEditingClass(item);
+                                  setDialogOpen(true);
+                                }}
+                                type="button"
+                                variant="outline"
+                              >
+                                Edit
+                              </Button>
+                            ) : null}
+                            {canManageClasses ? (
+                              <ConfirmDialog
+                                description={`Delete ${item.name}${item.section ? ` - ${item.section}` : ""}?`}
+                                onConfirm={() => handleDelete(item.id)}
+                              >
+                                <Button type="button" variant="destructive">
+                                  Delete
+                                </Button>
+                              </ConfirmDialog>
+                            ) : null}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>

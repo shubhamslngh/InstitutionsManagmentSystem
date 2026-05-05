@@ -52,6 +52,21 @@ const defaults = {
   notes: ""
 };
 
+const fullMonthLabels = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December"
+];
+
 function normalize(values, fallbackInstitutionId) {
   return {
     ...defaults,
@@ -67,6 +82,13 @@ function normalize(values, fallbackInstitutionId) {
     sessionEndMonth: values?.sessionEndMonth ? String(values.sessionEndMonth) : "2",
     notes: values?.notes ?? ""
   };
+}
+
+function getSessionPreview(startMonth, endMonth) {
+  const currentYear = new Date().getFullYear();
+  const safeStartMonth = Number(startMonth || 3);
+  const safeEndMonth = Number(endMonth || 2);
+  return `${fullMonthLabels[safeStartMonth - 1]} ${currentYear} to ${fullMonthLabels[safeEndMonth - 1]} ${currentYear + 1}`;
 }
 
 async function parseJson(response) {
@@ -102,6 +124,8 @@ export function FeeStructureFormDialog({
 
   const selectedInstitutionId = form.watch("institutionId");
   const frequency = form.watch("frequency");
+  const sessionStartMonth = form.watch("sessionStartMonth");
+  const sessionEndMonth = form.watch("sessionEndMonth");
   const institutionClasses = useMemo(
     () => classes.filter((item) => item.institutionId === selectedInstitutionId),
     [classes, selectedInstitutionId]
@@ -153,6 +177,12 @@ export function FeeStructureFormDialog({
           <DialogDescription>
             Create institution-wide or class-specific tuition structures for billing and monthly ledger tracking.
           </DialogDescription>
+          {frequency === "MONTHLY" ? (
+            <p className="text-sm text-muted-foreground">
+              Monthly invoices will be generated across the session window:{" "}
+              {getSessionPreview(sessionStartMonth, sessionEndMonth)}.
+            </p>
+          ) : null}
         </DialogHeader>
         <Form {...form}>
           <form className="grid gap-4 md:grid-cols-2" onSubmit={form.handleSubmit(onSubmit, (error) => {
@@ -275,7 +305,7 @@ export function FeeStructureFormDialog({
                 <FormItem>
                   <FormLabel>Session Start Month</FormLabel>
                   <FormControl>
-                    <Select {...field} disabled={frequency !== "MONTHLY"}>
+                      <Select {...field} disabled={frequency !== "MONTHLY"}>
                       <option value="1">January</option>
                       <option value="2">February</option>
                       <option value="3">March</option>

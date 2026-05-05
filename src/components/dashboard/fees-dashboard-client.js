@@ -1,7 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CreditCard, IndianRupee, Plus, Receipt, Trash2, Wallet } from "lucide-react";
+import {
+  CreditCard,
+  FileText,
+  IndianRupee,
+  LayoutDashboard,
+  NotebookPen,
+  Plus,
+  Receipt,
+  School,
+  Table2,
+  Trash2,
+  Wallet
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -25,6 +37,7 @@ export function FeesDashboardClient({
   classes,
   structures,
   defaultInstitutionId = "",
+  defaultTab = "overview",
   currentUser
 }) {
   const [invoiceRows, setInvoiceRows] = useState(invoices);
@@ -46,6 +59,8 @@ export function FeesDashboardClient({
     dueDate: "",
     notes: ""
   });
+  const allowedTabs = new Set(["overview", "invoices", "structures", "billing", "ledger"]);
+  const [activeTab, setActiveTab] = useState(allowedTabs.has(defaultTab) ? defaultTab : "overview");
   const [generatingClassFees, setGeneratingClassFees] = useState(false);
   const canManageFees = can(currentUser, "fees.manage");
   const monthNames = [
@@ -86,6 +101,8 @@ export function FeesDashboardClient({
 
   const recentPayments = paymentRows.slice(0, 6);
   const recentInvoices = invoiceRows.slice(0, 6);
+  const ledgerMonthColumns = ledgerRows[0]?.months || [];
+  const ledgerColumnCount = 11 + ledgerMonthColumns.length;
   const filteredClasses = useMemo(
     () => classes.filter((item) => item.institutionId === ledgerFilters.institutionId),
     [classes, ledgerFilters.institutionId]
@@ -94,6 +111,39 @@ export function FeesDashboardClient({
     () => classes.filter((item) => item.institutionId === classBillingForm.institutionId),
     [classes, classBillingForm.institutionId]
   );
+  const tabItems = [
+    {
+      id: "overview",
+      label: "Overview",
+      icon: LayoutDashboard,
+      description: "Summary, chart, and recent activity"
+    },
+    {
+      id: "invoices",
+      label: "Invoices",
+      icon: FileText,
+      description: "Recent invoice snapshot"
+    },
+    {
+      id: "structures",
+      label: "Structures",
+      icon: School,
+      description: "Fee structure setup",
+      count: structureRows.length
+    },
+    {
+      id: "billing",
+      label: "Billing",
+      icon: NotebookPen,
+      description: "Generate class fee invoices"
+    },
+    {
+      id: "ledger",
+      label: "Ledger",
+      icon: Table2,
+      description: "Monthly payment tracking"
+    }
+  ];
 
   useEffect(() => {
     const nextInstitutionId = defaultInstitutionId || institutions[0]?.id || "";
@@ -364,16 +414,9 @@ export function FeesDashboardClient({
     setEditingStructure(null);
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard icon={Receipt} label="Total Fees" value={formatCurrency(totals.totalFees)} />
-        <MetricCard icon={Wallet} label="Total Paid" value={formatCurrency(totals.totalPaid)} tone="success" />
-        <MetricCard icon={CreditCard} label="Total Pending" value={formatCurrency(totals.totalPending)} tone="danger" />
-        <MetricCard icon={IndianRupee} label="Total Discount" value={formatCurrency(totals.totalDiscount)} tone="warning" />
-      </div>
-
-      <div className="dashboard-grid">
+  function renderOverviewTab() {
+    return (
+      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <Card>
           <CardHeader>
             <CardTitle>Collections by Institution</CardTitle>
@@ -394,7 +437,9 @@ export function FeesDashboardClient({
                 <div className="flex items-center justify-between rounded-md border p-4" key={payment.id}>
                   <div>
                     <p className="font-medium">{formatCurrency(payment.amount)}</p>
-                    <p className="text-xs text-muted-foreground">{payment.paymentMethod} • {formatDate(payment.paymentDate)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {payment.paymentMethod} • {formatDate(payment.paymentDate)}
+                    </p>
                   </div>
                   <StatusBadge status="PAID" />
                 </div>
@@ -403,17 +448,25 @@ export function FeesDashboardClient({
           </CardContent>
         </Card>
       </div>
+    );
+  }
 
+  function renderInvoicesTab() {
+    return (
       <Card>
         <CardHeader>
           <CardTitle>Invoice Snapshot</CardTitle>
+          <p className="text-sm text-muted-foreground">Recent invoices grouped for quick review.</p>
         </CardHeader>
         <CardContent className="space-y-4">
           {recentInvoices.length === 0 ? (
             <p className="text-sm text-muted-foreground">No invoices created yet.</p>
           ) : (
             recentInvoices.map((invoice) => (
-              <div className="flex flex-col gap-3 rounded-md border p-4 md:flex-row md:items-center md:justify-between" key={invoice.id}>
+              <div
+                className="flex flex-col gap-3 rounded-md border p-4 md:flex-row md:items-center md:justify-between"
+                key={invoice.id}
+              >
                 <div>
                   <p className="font-medium">{invoice.title}</p>
                   <p className="text-xs text-muted-foreground">
@@ -432,9 +485,13 @@ export function FeesDashboardClient({
           )}
         </CardContent>
       </Card>
+    );
+  }
 
+  function renderStructuresTab() {
+    return (
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
           <div>
             <CardTitle>Fee Structures</CardTitle>
             <p className="text-sm text-muted-foreground">
@@ -453,9 +510,12 @@ export function FeesDashboardClient({
             <p className="text-sm text-muted-foreground">No fee structures created yet.</p>
           ) : (
             structureRows.map((structure) => (
-              <div className="flex flex-col gap-3 rounded-md border p-4 md:flex-row md:items-center md:justify-between" key={structure.id}>
+              <div
+                className="flex flex-col gap-3 rounded-md border p-4 md:flex-row md:items-center md:justify-between"
+                key={structure.id}
+              >
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium">{structure.name}</p>
                     <Badge variant="secondary">{structure.frequency}</Badge>
                     <Badge variant={structure.classId ? "default" : "outline"}>
@@ -504,7 +564,11 @@ export function FeesDashboardClient({
           )}
         </CardContent>
       </Card>
+    );
+  }
 
+  function renderBillingTab() {
+    return (
       <Card>
         <CardHeader>
           <CardTitle>Generate Fees For Whole Class</CardTitle>
@@ -542,7 +606,8 @@ export function FeesDashboardClient({
               <option value="">Select Class</option>
               {billingClasses.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name}{item.section ? ` - ${item.section}` : ""}
+                  {item.name}
+                  {item.section ? ` - ${item.section}` : ""}
                 </option>
               ))}
             </Select>
@@ -576,7 +641,11 @@ export function FeesDashboardClient({
           </form>
         </CardContent>
       </Card>
+    );
+  }
 
+  function renderLedgerTab() {
+    return (
       <Card>
         <CardHeader>
           <CardTitle>Monthly Fee Ledger</CardTitle>
@@ -614,7 +683,8 @@ export function FeesDashboardClient({
               <option value="ALL">All Classes</option>
               {filteredClasses.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name}{item.section ? ` - ${item.section}` : ""}
+                  {item.name}
+                  {item.section ? ` - ${item.section}` : ""}
                 </option>
               ))}
             </Select>
@@ -646,7 +716,7 @@ export function FeesDashboardClient({
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Total Paid</th>
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Balance</th>
                   <th className="px-4 py-3 text-left font-semibold text-muted-foreground">Actions</th>
-                  {ledgerRows[0]?.months.map((month) => (
+                  {ledgerMonthColumns.map((month) => (
                     <th className="px-3 py-3 text-center font-semibold text-muted-foreground" key={month.monthNumber}>
                       {month.label}
                     </th>
@@ -657,7 +727,7 @@ export function FeesDashboardClient({
                 {ledgerLoading ? (
                   Array.from({ length: 4 }).map((_, index) => (
                     <tr className="border-b" key={index}>
-                      {Array.from({ length: 23 }).map((__, cellIndex) => (
+                      {Array.from({ length: ledgerColumnCount }).map((__, cellIndex) => (
                         <td className="px-4 py-3" key={cellIndex}>
                           <Skeleton className="h-4 w-full min-w-10" />
                         </td>
@@ -666,7 +736,7 @@ export function FeesDashboardClient({
                   ))
                 ) : ledgerRows.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-12 text-center text-muted-foreground" colSpan={23}>
+                    <td className="px-4 py-12 text-center text-muted-foreground" colSpan={ledgerColumnCount}>
                       No monthly fee structures found for the selected filters.
                     </td>
                   </tr>
@@ -675,53 +745,57 @@ export function FeesDashboardClient({
                     const summary = getLedgerSummary(row);
 
                     return (
-                    <tr className="border-b" key={`${row.studentId}-${row.feeStructureId}`}>
-                      <td className="px-4 py-3 font-medium whitespace-nowrap">{row.studentName}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{row.className}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{row.feeName}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{formatCurrency(row.amount)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{summary.paidMonths}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{summary.dueMonths}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-amber-600">{formatCurrency(summary.totalDiscount)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">{formatCurrency(summary.totalPayable)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-emerald-600">{formatCurrency(summary.totalPaid)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-red-600">{formatCurrency(summary.balance)}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {canManageFees ? (
-                          <ConfirmDialog
-                            description={`Delete the fee ledger and generated month-wise invoices for ${row.studentName}?`}
-                            onConfirm={() => handleDeleteLedger(row)}
-                          >
-                            <Button size="sm" variant="destructive">
-                              <Trash2 className="h-4 w-4" />
-                              Delete
-                            </Button>
-                          </ConfirmDialog>
-                        ) : null}
-                      </td>
-                      {row.months.map((month) => {
-                        const checkboxKey = `${row.studentId}-${row.feeStructureId}-${month.monthNumber}`;
+                      <tr className="border-b" key={`${row.studentId}-${row.feeStructureId}`}>
+                        <td className="px-4 py-3 font-medium whitespace-nowrap">{row.studentName}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{row.className}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{row.feeName}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{formatCurrency(row.amount)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{summary.paidMonths}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{summary.dueMonths}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-amber-600">
+                          {formatCurrency(summary.totalDiscount)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">{formatCurrency(summary.totalPayable)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-emerald-600">
+                          {formatCurrency(summary.totalPaid)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-red-600">{formatCurrency(summary.balance)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {canManageFees ? (
+                            <ConfirmDialog
+                              description={`Delete the fee ledger and generated month-wise invoices for ${row.studentName}?`}
+                              onConfirm={() => handleDeleteLedger(row)}
+                            >
+                              <Button size="sm" variant="destructive">
+                                <Trash2 className="h-4 w-4" />
+                                Delete
+                              </Button>
+                            </ConfirmDialog>
+                          ) : null}
+                        </td>
+                        {row.months.map((month) => {
+                          const checkboxKey = `${row.studentId}-${row.feeStructureId}-${month.monthNumber}`;
 
-                        return (
-                          <td className="px-3 py-3 text-center" key={month.monthNumber}>
-                            <label className="inline-flex cursor-pointer items-center justify-center">
-                              <input
-                                checked={month.isPaid}
-                                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
-                                disabled={!canManageFees || ledgerUpdatingKey === checkboxKey}
-                                onChange={() => {
-                                  if (canManageFees) {
-                                    toggleLedgerMonth(row, month);
-                                  }
-                                }}
-                                type="checkbox"
-                              />
-                            </label>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
+                          return (
+                            <td className="px-3 py-3 text-center" key={month.monthNumber}>
+                              <label className="inline-flex cursor-pointer items-center justify-center">
+                                <input
+                                  checked={month.isPaid}
+                                  className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                                  disabled={!canManageFees || ledgerUpdatingKey === checkboxKey}
+                                  onChange={() => {
+                                    if (canManageFees) {
+                                      toggleLedgerMonth(row, month);
+                                    }
+                                  }}
+                                  type="checkbox"
+                                />
+                              </label>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
                   })
                 )}
               </tbody>
@@ -729,6 +803,59 @@ export function FeesDashboardClient({
           </div>
         </CardContent>
       </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard icon={Receipt} label="Total Fees" value={formatCurrency(totals.totalFees)} />
+        <MetricCard icon={Wallet} label="Total Paid" value={formatCurrency(totals.totalPaid)} tone="success" />
+        <MetricCard
+          icon={CreditCard}
+          label="Total Pending"
+          value={formatCurrency(totals.totalPending)}
+          tone="danger"
+        />
+        <MetricCard
+          icon={IndianRupee}
+          label="Total Discount"
+          value={formatCurrency(totals.totalDiscount)}
+          tone="warning"
+        />
+      </div>
+
+      <div className="rounded-xl border bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap gap-2">
+          {tabItems.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+
+            return (
+              <Button
+                className="h-auto min-w-0 flex-col items-start gap-1 px-4 py-3 sm:min-w-44"
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                type="button"
+                variant={isActive ? "default" : "outline"}
+              >
+                <span className="flex w-full items-center gap-2">
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="font-medium">{tab.label}</span>
+                  {typeof tab.count === "number" ? <Badge variant="secondary">{tab.count}</Badge> : null}
+                </span>
+                <span className="text-left text-xs font-normal opacity-80">{tab.description}</span>
+              </Button>
+            );
+          })}
+        </div>
+      </div>
+
+      {activeTab === "overview" ? renderOverviewTab() : null}
+      {activeTab === "invoices" ? renderInvoicesTab() : null}
+      {activeTab === "structures" ? renderStructuresTab() : null}
+      {activeTab === "billing" ? renderBillingTab() : null}
+      {activeTab === "ledger" ? renderLedgerTab() : null}
 
       <FeeStructureFormDialog
         open={structureDialogOpen}

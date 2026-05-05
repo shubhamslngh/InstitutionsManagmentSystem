@@ -176,6 +176,18 @@ function validateFeeItems(feeItems) {
     });
 }
 
+function normalizeSelectedFeeStructureIds(selectedFeeStructureIds) {
+  if (selectedFeeStructureIds === undefined || selectedFeeStructureIds === null) {
+    return [];
+  }
+
+  if (!Array.isArray(selectedFeeStructureIds)) {
+    throw createHttpError(400, "selectedFeeStructureIds must be an array.");
+  }
+
+  return selectedFeeStructureIds.map((item) => normalizeValue(item ?? "")).filter(Boolean);
+}
+
 async function assertInstitutionExists(institutionId, client = { query }) {
   const result = await client.query("SELECT id FROM institutions WHERE id = $1", [institutionId]);
   if (result.rowCount === 0) {
@@ -552,6 +564,7 @@ export async function createStudent(payload) {
   requireFields(payload, ["institutionId", "firstName", "admissionNumber"]);
   validateStudentPayload(payload);
   const feeItems = validateFeeItems(payload.feeItems);
+  const selectedFeeStructureIds = normalizeSelectedFeeStructureIds(payload.selectedFeeStructureIds);
 
   return withTransaction(async (client) => {
     await assertInstitutionExists(payload.institutionId, client);
@@ -623,7 +636,22 @@ export async function createStudent(payload) {
       );
     }
 
-    if (payload.classId) {
+    if (payload.classId && selectedFeeStructureIds.length > 0) {
+      try {
+        await assignClassFeesToStudent(
+          {
+            studentId,
+            sessionYearOverride: getAcademicYearStart(payload.academicYear),
+            feeStructureIds: selectedFeeStructureIds
+          },
+          client
+        );
+      } catch (error) {
+        if (!canIgnoreClassFeeAssignmentError(error)) {
+          throw error;
+        }
+      }
+    } else if (payload.classId && feeItems.length === 0) {
       try {
         await assignClassFeesToStudent(
           {
@@ -646,6 +674,7 @@ export async function createStudent(payload) {
 
 export async function updateStudent(studentId, payload) {
   const feeItems = validateFeeItems(payload.feeItems);
+  const selectedFeeStructureIds = normalizeSelectedFeeStructureIds(payload.selectedFeeStructureIds);
 
   return withTransaction(async (client) => {
     const currentStudentResult = await client.query("SELECT * FROM students WHERE id = $1", [studentId]);
@@ -721,7 +750,24 @@ export async function updateStudent(studentId, payload) {
       );
     }
 
-    if (nextClassId) {
+    if (nextClassId && selectedFeeStructureIds.length > 0) {
+      try {
+        await assignClassFeesToStudent(
+          {
+            studentId,
+            sessionYearOverride: getAcademicYearStart(
+              payload.academicYear?.trim() ?? currentStudent.academicYear
+            ),
+            feeStructureIds: selectedFeeStructureIds
+          },
+          client
+        );
+      } catch (error) {
+        if (!canIgnoreClassFeeAssignmentError(error)) {
+          throw error;
+        }
+      }
+    } else if (nextClassId && feeItems.length === 0) {
       try {
         await assignClassFeesToStudent(
           {

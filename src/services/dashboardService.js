@@ -1,9 +1,12 @@
 import { query } from "../db/index.js";
+import { getInstitutionById } from "./institutionService.js";
 
 export async function getDashboardSnapshot(filters = {}) {
   const institutionId = filters.institutionId || null;
   const [
     institutionsResult,
+    classesResult,
+    feeStructuresResult,
     studentsResult,
     invoicesResult,
     paymentsResult,
@@ -14,6 +17,18 @@ export async function getDashboardSnapshot(filters = {}) {
       institutionId
         ? "SELECT COUNT(*) AS count FROM institutions WHERE id = $1"
         : "SELECT COUNT(*) AS count FROM institutions",
+      institutionId ? [institutionId] : []
+    ),
+    query(
+      institutionId
+        ? "SELECT COUNT(*) AS count FROM academic_classes WHERE institution_id = $1"
+        : "SELECT COUNT(*) AS count FROM academic_classes",
+      institutionId ? [institutionId] : []
+    ),
+    query(
+      institutionId
+        ? "SELECT COUNT(*) AS count FROM fee_structures WHERE institution_id = $1"
+        : "SELECT COUNT(*) AS count FROM fee_structures",
       institutionId ? [institutionId] : []
     ),
     query(
@@ -68,9 +83,17 @@ export async function getDashboardSnapshot(filters = {}) {
     )
   ]);
 
+  const institution = institutionId ? await getInstitutionById(institutionId).catch(() => null) : null;
+
   return {
+    context: {
+      institutionId,
+      institutionName: institution?.name || null
+    },
     totals: {
       institutions: Number(institutionsResult.rows[0].count),
+      classes: Number(classesResult.rows[0].count),
+      feeStructures: Number(feeStructuresResult.rows[0].count),
       students: Number(studentsResult.rows[0].count),
       invoices: Number(invoicesResult.rows[0].count),
       collections: Number(paymentsResult.rows[0].total),

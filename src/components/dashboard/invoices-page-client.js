@@ -665,6 +665,12 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
         title="Invoice Ledger"
         columns={columns}
         data={invoices}
+        compact
+        cardClassName="border-slate-200 shadow-sm"
+        headerClassName="bg-muted/20"
+        contentClassName="bg-white"
+        tableWrapperClassName="max-h-[500px] overflow-auto"
+        footerClassName="px-4 py-3"
           actions={
           canManageFees && selectedInvoiceIds.length > 0 ? (
             <ConfirmDialog

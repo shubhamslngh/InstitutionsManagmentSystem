@@ -12,6 +12,24 @@ async function assertInstitutionExists(institutionId) {
   }
 }
 
+async function getClassRowById(db, classId) {
+  const result = await db.query(
+    `
+      SELECT c.*, i.name AS institution_name
+      FROM academic_classes c
+      JOIN institutions i ON i.id = c.institution_id
+      WHERE c.id = $1
+    `,
+    [classId]
+  );
+
+  if (result.rowCount === 0) {
+    throw createHttpError(404, "Class not found.");
+  }
+
+  return toCamelCaseRow(result.rows[0]);
+}
+
 function parseAcademicYearStart(academicYear) {
   const match = String(academicYear || "").match(/^(\d{4})/);
   return match ? Number(match[1]) : null;
@@ -199,21 +217,7 @@ export async function listClasses(filters = {}) {
 }
 
 export async function getClassById(classId) {
-  const result = await query(
-    `
-      SELECT c.*, i.name AS institution_name
-      FROM academic_classes c
-      JOIN institutions i ON i.id = c.institution_id
-      WHERE c.id = $1
-    `,
-    [classId]
-  );
-
-  if (result.rowCount === 0) {
-    throw createHttpError(404, "Class not found.");
-  }
-
-  return toCamelCaseRow(result.rows[0]);
+  return getClassRowById({ query }, classId);
 }
 
 export async function createClass(payload) {
@@ -245,12 +249,12 @@ export async function createClass(payload) {
         ]
       );
 
-      const classRow = await getClassById(classId);
+      const classRow = await getClassRowById(client, classId);
       if (payload.classFeeStructures !== undefined) {
         await syncClassFeeStructures(client, classRow, payload.classFeeStructures);
       }
 
-      return getClassById(classId);
+      return getClassRowById(client, classId);
     } catch (error) {
       if (error.code === "ER_DUP_ENTRY") {
         throw createHttpError(409, "This class already exists for the institution.");
@@ -279,7 +283,7 @@ export async function createClass(payload) {
 
 export async function updateClass(classId, payload) {
   const updatedClass = await withTransaction(async (client) => {
-    const currentClass = await getClassById(classId);
+    const currentClass = await getClassRowById(client, classId);
     const institutionId = payload.institutionId ?? currentClass.institutionId;
     await assertInstitutionExists(institutionId);
 
@@ -306,12 +310,12 @@ export async function updateClass(classId, payload) {
         ]
       );
 
-      const updatedClass = await getClassById(classId);
+      const updatedClass = await getClassRowById(client, classId);
       if (payload.classFeeStructures !== undefined) {
         await syncClassFeeStructures(client, updatedClass, payload.classFeeStructures);
       }
 
-      return getClassById(classId);
+      return getClassRowById(client, classId);
     } catch (error) {
       if (error.code === "ER_DUP_ENTRY") {
         throw createHttpError(409, "This class already exists for the institution.");

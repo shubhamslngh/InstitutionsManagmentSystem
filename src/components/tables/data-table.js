@@ -43,7 +43,8 @@ export function DataTable({
   headerClassName,
   contentClassName,
   tableWrapperClassName,
-  footerClassName
+  footerClassName,
+  compact = false
 }) {
   const [sorting, setSorting] = useState([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -113,12 +114,12 @@ export function DataTable({
       </CardHeader>
       <CardContent className={cn("p-0", contentClassName)}>
         <div className={cn("max-h-[560px] overflow-auto", tableWrapperClassName)}>
-          <Table>
+          <Table className={compact ? "text-[13px]" : ""}>
             <TableHeader className="sticky top-0 z-10 bg-card">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
+                    <TableHead className={compact ? "h-10 px-3 text-[10px]" : ""} key={header.id}>
                       {header.isPlaceholder
                         ? null
                         : flexRender(header.column.columnDef.header, header.getContext())}
@@ -132,7 +133,7 @@ export function DataTable({
                 ? Array.from({ length: 5 }).map((_, index) => (
                     <TableRow key={`skeleton-${index}`}>
                       {columns.map((column, columnIndex) => (
-                        <TableCell key={`${index}-${columnIndex}`}>
+                        <TableCell className={compact ? "px-3 py-2 text-[13px]" : ""} key={`${index}-${columnIndex}`}>
                           <Skeleton className="h-4 w-full max-w-40" />
                         </TableCell>
                       ))}
@@ -142,7 +143,7 @@ export function DataTable({
                   ? table.getRowModel().rows.map((row) => (
                       <TableRow key={row.id}>
                         {row.getVisibleCells().map((cell) => (
-                          <TableCell key={cell.id}>
+                          <TableCell className={compact ? "px-3 py-2 align-top" : ""} key={cell.id}>
                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
                           </TableCell>
                         ))}

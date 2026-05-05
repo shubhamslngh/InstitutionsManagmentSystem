@@ -1,7 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowUpDown, IndianRupee, Plus, Users } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowUpDown,
+  Building2,
+  CalendarDays,
+  ChevronRight,
+  IndianRupee,
+  Plus,
+  School,
+  Users
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button.js";
 import { MetricCard } from "./metric-card.js";
@@ -60,12 +71,40 @@ function getClassLabel(academicClass) {
   return academicClass.section ? `${academicClass.name} - ${academicClass.section}` : academicClass.name;
 }
 
+function getStudentClassLabel(student) {
+  if (!student?.classId) {
+    return "Unassigned";
+  }
+
+  return student.section ? `${student.className || "Class"} - ${student.section}` : student.className || "Class";
+}
+
+function getAcademicYearStart(academicYear) {
+  const match = String(academicYear || "").trim().match(/^(\d{4})/);
+  return match ? Number(match[1]) : 0;
+}
+
+function compareAcademicYears(left, right) {
+  const leftStart = getAcademicYearStart(left);
+  const rightStart = getAcademicYearStart(right);
+
+  if (leftStart !== rightStart) {
+    return rightStart - leftStart;
+  }
+
+  return String(right || "").localeCompare(String(left || ""), undefined, {
+    numeric: true,
+    sensitivity: "base"
+  });
+}
+
 export function StudentsPageClient({
   initialStudents,
   institutions,
   classes,
   initialError,
   defaultInstitutionId = "",
+  defaultClassId = "",
   currentUser
 }) {
   const [students, setStudents] = useState(initialStudents);
@@ -84,6 +123,12 @@ export function StudentsPageClient({
   const canManageStudents = can(currentUser, "students.manage");
   const canPromoteStudents = can(currentUser, "students.promote");
   const canReadFees = can(currentUser, "fees.read");
+  const isSuperAdmin = currentUser?.role === "SUPER_ADMIN";
+
+  const institutionById = useMemo(
+    () => new Map(institutions.map((institution) => [institution.id, institution])),
+    [institutions]
+  );
 
   const selectedStudents = useMemo(
     () => students.filter((student) => selectedStudentIds.includes(student.id)),
@@ -105,9 +150,53 @@ export function StudentsPageClient({
     [classes, selectedInstitutionId]
   );
 
+  const selectedStudentPromotionSummary = useMemo(() => {
+    const groups = new Map();
+
+    for (const student of selectedStudents) {
+      const classLabel = student.classId ? getStudentClassLabel(student) : "Unassigned";
+      const academicYear = student.academicYear || "Academic year not set";
+      const key = `${classLabel}::${academicYear}`;
+      groups.set(key, {
+        classLabel,
+        academicYear,
+        count: (groups.get(key)?.count || 0) + 1
+      });
+    }
+
+    return Array.from(groups.values()).sort((left, right) => {
+      const yearCompare = compareAcademicYears(left.academicYear, right.academicYear);
+      if (yearCompare !== 0) {
+        return yearCompare;
+      }
+
+      return left.classLabel.localeCompare(right.classLabel, undefined, {
+        numeric: true,
+        sensitivity: "base"
+      });
+    });
+  }, [selectedStudents]);
+
+  const selectedPromotionTargetClass = useMemo(
+    () => promotionClassOptions.find((academicClass) => academicClass.id === promotionClassId) || null,
+    [promotionClassId, promotionClassOptions]
+  );
+
+  const selectedPromotionTargetAcademicYear = selectedPromotionTargetClass?.academicYear || "";
+  const selectedPromotionTargetMissingYear = Boolean(selectedPromotionTargetClass && !selectedPromotionTargetAcademicYear);
+
   useEffect(() => {
     setInstitutionFilter(defaultInstitutionId);
   }, [defaultInstitutionId]);
+
+  useEffect(() => {
+    if (!defaultClassId) {
+      return;
+    }
+
+    setClassFilter(defaultClassId);
+    setShowClassDetail(true);
+  }, [defaultClassId]);
 
   useEffect(() => {
     setSelectedStudentIds([]);
@@ -125,11 +214,26 @@ export function StudentsPageClient({
     );
   }, [selectedStudents]);
 
+  useEffect(() => {
+    if (!promotionClassId) {
+      return;
+    }
+
+    if (selectedPromotionTargetAcademicYear) {
+      setPromotionAcademicYear(selectedPromotionTargetAcademicYear);
+    }
+  }, [promotionClassId, selectedPromotionTargetAcademicYear]);
+
   const institutionClasses = useMemo(
     () =>
       classes
         .filter((academicClass) => (institutionFilter ? academicClass.institutionId === institutionFilter : true))
         .sort((left, right) =>
+          getAcademicYearStart(right.academicYear) - getAcademicYearStart(left.academicYear) ||
+          String(right.academicYear || "").localeCompare(String(left.academicYear || ""), undefined, {
+            numeric: true,
+            sensitivity: "base"
+          }) ||
           getClassLabel(left).localeCompare(getClassLabel(right), undefined, {
             numeric: true,
             sensitivity: "base"
@@ -137,6 +241,45 @@ export function StudentsPageClient({
         ),
     [classes, institutionFilter]
   );
+
+  const academicYearGroups = useMemo(() => {
+    const grouped = new Map();
+
+    for (const academicClass of institutionClasses) {
+      const yearKey = academicClass.academicYear || "Unspecified";
+      const current = grouped.get(yearKey) || [];
+      current.push(academicClass);
+      grouped.set(yearKey, current);
+    }
+
+    return Array.from(grouped.entries())
+      .sort(([left], [right]) => compareAcademicYears(left, right))
+      .map(([academicYear, yearClasses]) => ({
+        academicYear,
+        classes: yearClasses.sort((left, right) => {
+          const leftInstitution = left.institutionName || institutionById.get(left.institutionId)?.name || "";
+          const rightInstitution = right.institutionName || institutionById.get(right.institutionId)?.name || "";
+          return (
+            leftInstitution.localeCompare(rightInstitution, undefined, {
+              numeric: true,
+              sensitivity: "base"
+            }) ||
+            getClassLabel(left).localeCompare(getClassLabel(right), undefined, {
+              numeric: true,
+              sensitivity: "base"
+            })
+          );
+        })
+      }));
+  }, [institutionById, institutionClasses]);
+
+  const visibleInstitutionName = useMemo(() => {
+    if (!institutionFilter) {
+      return "All Institutions";
+    }
+
+    return institutionById.get(institutionFilter)?.name || "Selected Institution";
+  }, [institutionById, institutionFilter]);
 
   const unassignedStudents = useMemo(
     () =>
@@ -173,6 +316,10 @@ export function StudentsPageClient({
     () => classes.find((academicClass) => academicClass.id === classFilter) || null,
     [classFilter, classes]
   );
+
+  const selectedClassInstitutionName = selectedClassRecord
+    ? selectedClassRecord.institutionName || institutionById.get(selectedClassRecord.institutionId)?.name || "Institution"
+    : "";
 
   const filteredStudents = useMemo(() => {
     return students.filter((item) => {
@@ -550,7 +697,7 @@ export function StudentsPageClient({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl bg-gradient-to-br from-sky-50 to-indigo-50 p-[1px]">
           <MetricCard icon={Users} label="Total Students" value={students.length} />
         </div>
@@ -564,99 +711,215 @@ export function StudentsPageClient({
         </div>
         <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-rose-50 p-[1px]">
           <MetricCard
-            icon={Users}
-            label="Active Institutions"
-            value={institutions.length}
+            icon={School}
+            label="Academic Years"
+            value={academicYearGroups.length}
             tone="warning"
+          />
+        </div>
+        <div className="rounded-2xl bg-gradient-to-br from-violet-50 to-fuchsia-50 p-[1px]">
+          <MetricCard
+            icon={Building2}
+            label={isSuperAdmin ? "Institutions" : "Institution"}
+            value={isSuperAdmin ? institutions.length : visibleInstitutionName}
+            tone="default"
           />
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="w-full max-w-sm">
-          <Select value={institutionFilter} onChange={(event) => setInstitutionFilter(event.target.value)}>
-            <option value="">All Institutions</option>
-            {institutions.map((institution) => (
-              <option key={institution.id} value={institution.id}>
-                {institution.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        {canManageStudents ? (
-          <Button
-            onClick={() => {
-              setEditingStudent(null);
-              setDialogOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" />
-            Add Student
-          </Button>
-        ) : null}
-      </div>
-
       {!showClassDetail ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Classes</CardTitle>
-            <CardDescription>
-              Open a class to manage its students, promotions, and roster actions.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {institutionClasses.map((academicClass) => {
-              const roster = students.filter((student) => student.classId === academicClass.id);
-              const activeCount = roster.filter((student) => (student.status || "ACTIVE") === "ACTIVE").length;
-
-              return (
-                <button
-                  className="rounded-xl border border-rose-200 bg-gradient-to-br from-rose-50 via-amber-50 to-sky-50 p-5 text-left transition-colors hover:border-sky-300 hover:from-rose-100 hover:via-amber-100 hover:to-sky-100"
-                  key={academicClass.id}
-                  onClick={() => openClassDetail(academicClass.id)}
-                  type="button"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-semibold">{getClassLabel(academicClass)}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {academicClass.academicYear || "Academic year not set"}
-                      </p>
-                    </div>
-                    <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700">
-                      {roster.length} students
-                    </span>
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-lg bg-white/70 p-3">
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Active</p>
-                      <p className="mt-1 font-semibold">{activeCount}</p>
-                    </div>
-                    <div className="rounded-lg bg-white/70 p-3">
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Capacity</p>
-                      <p className="mt-1 font-semibold">{academicClass.capacity || "NA"}</p>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-
-            <button
-              className="rounded-xl border border-dashed border-lime-200 bg-gradient-to-br from-lime-50 via-emerald-50 to-cyan-50 p-5 text-left transition-colors hover:border-emerald-300 hover:from-lime-100 hover:via-emerald-100 hover:to-cyan-100"
-              onClick={() => openClassDetail("__unassigned__")}
-              type="button"
-            >
-              <p className="font-semibold">Unassigned Students</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Students not linked to any class yet
-              </p>
-              <div className="mt-4 rounded-lg bg-white/70 p-3 text-sm">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Students</p>
-                <p className="mt-1 font-semibold">{unassignedStudents.length}</p>
+        <div className="space-y-5">
+          <Card className="border-slate-200 bg-gradient-to-r from-slate-50 via-white to-sky-50">
+            <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                  Student navigation
+                </p>
+                <h2 className="text-xl font-semibold tracking-tight">Browse classes by academic year</h2>
+                <p className="max-w-2xl text-sm text-muted-foreground">
+                  Open a class card to manage its roster, add students, or promote the entire batch.
+                  {isSuperAdmin ? " Institution names are shown on each class card." : ""}
+                </p>
               </div>
-            </button>
-          </CardContent>
-        </Card>
+              <div className="flex flex-wrap gap-2">
+                <div className="rounded-full border bg-white px-3 py-2 text-xs font-medium text-slate-600">
+                  {visibleInstitutionName}
+                </div>
+                <div className="rounded-full border bg-white px-3 py-2 text-xs font-medium text-slate-600">
+                  {institutionClasses.length} classes
+                </div>
+                <div className="rounded-full border bg-white px-3 py-2 text-xs font-medium text-slate-600">
+                  {unassignedStudents.length} unassigned
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="w-full max-w-sm">
+              <Select value={institutionFilter} onChange={(event) => setInstitutionFilter(event.target.value)}>
+                <option value="">All Institutions</option>
+                {institutions.map((institution) => (
+                  <option key={institution.id} value={institution.id}>
+                    {institution.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {canManageStudents ? (
+              <Button
+                className="shadow-sm"
+                onClick={() => {
+                  setEditingStudent(null);
+                  setDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                Add Student
+              </Button>
+            ) : null}
+          </div>
+
+          {academicYearGroups.length > 0 ? (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {academicYearGroups.map((group) => (
+                <a
+                  className="shrink-0 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-primary hover:text-primary"
+                  href={`#year-${String(group.academicYear).replace(/[^a-zA-Z0-9]+/g, "-")}`}
+                  key={group.academicYear}
+                >
+                  {group.academicYear}
+                  <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs">
+                    {group.classes.length}
+                  </span>
+                </a>
+              ))}
+            </div>
+          ) : null}
+
+          {academicYearGroups.length > 0 ? (
+            academicYearGroups.map((group) => (
+              <section className="space-y-4" id={`year-${String(group.academicYear).replace(/[^a-zA-Z0-9]+/g, "-")}`} key={group.academicYear}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                      Academic Year
+                    </p>
+                    <h3 className="text-lg font-semibold tracking-tight">{group.academicYear}</h3>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-600">
+                    <CalendarDays className="h-4 w-4" />
+                    {group.classes.length} classes
+                  </div>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {group.classes.map((academicClass) => {
+                    const roster = students.filter((student) => student.classId === academicClass.id);
+                    const activeCount = roster.filter((student) => (student.status || "ACTIVE") === "ACTIVE").length;
+                    const classInstitutionName =
+                      academicClass.institutionName || institutionById.get(academicClass.institutionId)?.name || "Institution";
+
+                    return (
+                      <Card className="overflow-hidden border-slate-200 bg-white/90 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg" key={academicClass.id}>
+                        <CardContent className="space-y-4 p-5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                  {academicClass.section || "Main"}
+                                </span>
+                                <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-800">
+                                  {roster.length} students
+                                </span>
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-base font-semibold tracking-tight">{getClassLabel(academicClass)}</p>
+                                {isSuperAdmin ? (
+                                  <p className="text-sm text-muted-foreground">{classInstitutionName}</p>
+                                ) : null}
+                              </div>
+                            </div>
+                            <div className="rounded-xl bg-slate-50 p-2 text-slate-400">
+                              <ChevronRight className="h-5 w-5" />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-3 text-sm">
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-xs uppercase tracking-wide text-slate-500">Active</p>
+                              <p className="mt-1 text-lg font-semibold">{activeCount}</p>
+                            </div>
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-xs uppercase tracking-wide text-slate-500">Capacity</p>
+                              <p className="mt-1 text-lg font-semibold">{academicClass.capacity || "NA"}</p>
+                            </div>
+                            <div className="rounded-xl bg-slate-50 p-3">
+                              <p className="text-xs uppercase tracking-wide text-slate-500">Promotions</p>
+                              <p className="mt-1 text-lg font-semibold">{roster.length}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2">
+                            <Button className="flex-1" onClick={() => openClassDetail(academicClass.id)} type="button" variant="outline">
+                              Open Roster
+                            </Button>
+                            {canManageStudents ? (
+                              <Button
+                                className="flex-1"
+                                onClick={() => {
+                                  setInstitutionFilter(academicClass.institutionId);
+                                  setClassFilter(academicClass.id);
+                                  setShowClassDetail(true);
+                                  setEditingStudent({
+                                    institutionId: academicClass.institutionId,
+                                    classId: academicClass.id,
+                                    academicYear: academicClass.academicYear || ""
+                                  });
+                                  setDialogOpen(true);
+                                }}
+                                type="button"
+                              >
+                                Add Student
+                              </Button>
+                            ) : null}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </section>
+            ))
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="p-8 text-center">
+                <School className="mx-auto h-10 w-10 text-muted-foreground" />
+                <p className="mt-4 text-lg font-semibold">No classes found</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Add classes first, then students will appear grouped by academic year.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          <button
+            className="w-full rounded-2xl border border-dashed border-lime-200 bg-gradient-to-br from-lime-50 via-emerald-50 to-cyan-50 p-5 text-left transition-colors hover:border-emerald-300 hover:from-lime-100 hover:via-emerald-100 hover:to-cyan-100"
+            onClick={() => openClassDetail("__unassigned__")}
+            type="button"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-semibold">Unassigned Students</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Students not linked to any class yet
+                </p>
+              </div>
+              <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700">
+                {unassignedStudents.length}
+              </span>
+            </div>
+          </button>
+        </div>
       ) : null}
 
       {showClassDetail ? (
@@ -682,7 +945,9 @@ export function StudentsPageClient({
                 <CardDescription>
                   {classFilter === "__unassigned__"
                     ? "Students waiting to be assigned to a class."
-                    : selectedClassRecord?.academicYear || "Academic year not set"}
+                    : `${selectedClassRecord?.academicYear || "Academic year not set"}${
+                        isSuperAdmin && selectedClassInstitutionName ? ` • ${selectedClassInstitutionName}` : ""
+                      }`}
                 </CardDescription>
               </div>
             </div>
@@ -707,9 +972,7 @@ export function StudentsPageClient({
           <CardContent className="grid gap-4 md:grid-cols-4">
             <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
               <p className="text-xs uppercase tracking-wide text-sky-700">Institution</p>
-              <p className="mt-2 font-medium">
-                {institutions.find((institution) => institution.id === institutionFilter)?.name || "All Institutions"}
-              </p>
+              <p className="mt-2 font-medium">{visibleInstitutionName}</p>
             </div>
             <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
               <p className="text-xs uppercase tracking-wide text-rose-700">Roster size</p>
@@ -824,28 +1087,117 @@ export function StudentsPageClient({
               <p className="text-sm font-medium">Selected students</p>
               <p className="text-sm text-muted-foreground">
                 {selectedStudentIds.length} student(s) from{" "}
-                {institutions.find((institution) => institution.id === selectedInstitutionId)?.name || "the selected institution"}
+                {selectedInstitutionId
+                  ? institutions.find((institution) => institution.id === selectedInstitutionId)?.name || "the selected institution"
+                  : "multiple institutions"}
               </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {selectedStudentPromotionSummary.length > 0 ? (
+                  selectedStudentPromotionSummary.map((entry) => (
+                    <span
+                      className="rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-medium text-slate-700"
+                      key={`${entry.classLabel}-${entry.academicYear}`}
+                    >
+                      {entry.classLabel} • {entry.academicYear}
+                      <span className="ml-2 rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">
+                        {entry.count}
+                      </span>
+                    </span>
+                  ))
+                ) : (
+                  <span className="rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-medium text-slate-700">
+                    No class assigned yet
+                  </span>
+                )}
+              </div>
             </div>
 
-            <div className="space-y-2 rounded-xl border border-sky-200 bg-white/60 p-4">
-              <label className="text-sm font-medium" htmlFor="promotion-class">
-                Target class
-              </label>
-              <Select
-                id="promotion-class"
-                value={promotionClassId}
-                onChange={(event) => setPromotionClassId(event.target.value)}
-              >
-                <option value="">Select class</option>
-                {promotionClassOptions.map((academicClass) => (
-                  <option key={academicClass.id} value={academicClass.id}>
-                    {academicClass.name}
-                    {academicClass.section ? ` - ${academicClass.section}` : ""}
-                    {academicClass.academicYear ? ` (${academicClass.academicYear})` : ""}
-                  </option>
-                ))}
-              </Select>
+            <div className="space-y-3 rounded-xl border border-sky-200 bg-white/60 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Promote to class</p>
+                  <p className="text-sm text-muted-foreground">
+                    Click a class card to move the selected students into that class.
+                  </p>
+                </div>
+                {selectedPromotionTargetClass ? (
+                  <div className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-800">
+                    Selected: {getClassLabel(selectedPromotionTargetClass)}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {promotionClassOptions.map((academicClass) => {
+                  const isSelected = promotionClassId === academicClass.id;
+                  const hasYear = Boolean(academicClass.academicYear);
+
+                  return (
+                    <button
+                      className={`rounded-xl border p-4 text-left transition-all ${
+                        isSelected
+                          ? "border-emerald-400 bg-emerald-50 shadow-sm"
+                          : "border-slate-200 bg-white hover:border-sky-300 hover:shadow-sm"
+                      }`}
+                      key={academicClass.id}
+                      onClick={() => setPromotionClassId(academicClass.id)}
+                      type="button"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="font-semibold">{getClassLabel(academicClass)}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {academicClass.institutionName ||
+                              institutions.find((institution) => institution.id === academicClass.institutionId)?.name ||
+                              "Institution"}
+                          </p>
+                        </div>
+                        <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                          {isSelected ? "Selected" : "Click"}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
+                          {hasYear ? academicClass.academicYear : "Academic year missing"}
+                        </span>
+                        <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
+                          Capacity {academicClass.capacity || "NA"}
+                        </span>
+                        {!hasYear ? (
+                          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900">
+                            Missing year
+                          </span>
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedPromotionTargetClass ? (
+                <div className="rounded-lg border bg-white p-4">
+                  <p className="text-sm font-medium">
+                    Promoting to {getClassLabel(selectedPromotionTargetClass)}
+                    {selectedPromotionTargetAcademicYear ? ` • ${selectedPromotionTargetAcademicYear}` : ""}
+                  </p>
+                  {selectedPromotionTargetMissingYear ? (
+                    <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                      <div>
+                        <p className="font-medium">Academic year is not set for the target class.</p>
+                        <p className="text-sm">
+                          Add an academic year before promoting, or enter the year manually below.
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Choose a class card above to set the promotion destination.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2 rounded-xl border border-amber-200 bg-white/60 p-4">
@@ -858,6 +1210,15 @@ export function StudentsPageClient({
                 value={promotionAcademicYear}
                 onChange={(event) => setPromotionAcademicYear(event.target.value)}
               />
+              {selectedPromotionTargetMissingYear ? (
+                <p className="text-xs text-amber-700">
+                  The selected class has no academic year. Set it here before promoting.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  This year is applied when students are promoted to the selected class.
+                </p>
+              )}
             </div>
           </div>
 

@@ -81,7 +81,7 @@ export function DashboardShell({ children, institutions = [], currentUser }) {
       .filter((item) => canAccessPath(currentUser, item.href))
       .map((item) => {
       const params = new URLSearchParams();
-      if (currentInstitutionId) {
+      if (currentInstitutionId && item.href !== "/institutions") {
         params.set("institutionId", currentInstitutionId);
       }
 
@@ -102,7 +102,7 @@ export function DashboardShell({ children, institutions = [], currentUser }) {
     }
 
     const queryString = params.toString();
-    router.push(queryString ? `${pathname}?${queryString}` : pathname);
+    router.push(pathname === "/institutions" ? pathname : queryString ? `${pathname}?${queryString}` : pathname);
   }
 
   useEffect(() => {

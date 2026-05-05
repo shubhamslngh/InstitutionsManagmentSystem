@@ -15,6 +15,7 @@ export default async function StudentsPage({ searchParams }) {
   let error = null;
   const params = await searchParams;
   const institutionId = getScopedInstitutionId(user, params?.institutionId || undefined);
+  const classId = params?.classId || "";
 
   try {
     await ensureSchema();
@@ -35,6 +36,7 @@ export default async function StudentsPage({ searchParams }) {
       classes={classes}
       initialError={error}
       defaultInstitutionId={institutionId || ""}
+      defaultClassId={classId}
     />
   );
 }

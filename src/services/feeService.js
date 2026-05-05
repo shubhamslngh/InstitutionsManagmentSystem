@@ -54,6 +54,11 @@ function getSessionMonthSequence(startMonth, endMonth) {
   return months;
 }
 
+function getAcademicYearStart(academicYear) {
+  const match = String(academicYear || "").trim().match(/^(\d{4})/);
+  return match ? Number(match[1]) : null;
+}
+
 function getMonthlyStructureCoverage(structure, referenceDate = new Date()) {
   const startMonth = Number(structure.sessionStartMonth || 0);
   const endMonth = Number(structure.sessionEndMonth || 0);
@@ -364,11 +369,29 @@ function formatInvoiceLineLabel(invoice) {
     return baseName;
   }
 
+  if (/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b\s+\d{4}/.test(String(baseName))) {
+    return baseName;
+  }
+
   if (String(baseName).includes(monthLabel)) {
     return baseName;
   }
 
   return `${baseName} (${monthLabel})`;
+}
+
+function getInvoiceReferenceDate(invoice) {
+  const dueDate = invoice?.dueDate ? new Date(invoice.dueDate) : null;
+  if (dueDate && !Number.isNaN(dueDate.getTime())) {
+    return dueDate;
+  }
+
+  const createdAt = invoice?.createdAt ? new Date(invoice.createdAt) : null;
+  if (createdAt && !Number.isNaN(createdAt.getTime())) {
+    return createdAt;
+  }
+
+  return null;
 }
 
 function dedupeOverlappingMonthlyAssignments(assignments) {
@@ -428,10 +451,11 @@ async function ensureStudentMonthlyInvoicesTillDate(studentId, cutoffDate, exist
     }
 
     const cutoffMonthStart = new Date(cutoffDate.getFullYear(), cutoffDate.getMonth(), 1);
+    const sessionStartYear = getAcademicYearStart(student.academicYear);
 
     for (const row of structuresResult.rows) {
       const structure = toCamelCaseRow(row);
-      const sessionYear = getCurrentSessionYear(structure, cutoffDate);
+      const sessionYear = sessionStartYear || getCurrentSessionYear(structure, cutoffDate);
       const sessionMonths = getSessionMonthsForYear(structure, sessionYear).filter((sessionMonth) => {
         const monthDate = new Date(sessionMonth.calendarYear, sessionMonth.monthNumber - 1, 1);
         return monthDate <= cutoffMonthStart;
@@ -1083,6 +1107,9 @@ export async function assignFeeStructureToStudent(payload) {
 
 export async function assignClassFeesToStudent(payload, existingClient = null) {
   requireFields(payload, ["studentId"]);
+  const selectedFeeStructureIds = Array.isArray(payload?.feeStructureIds)
+    ? payload.feeStructureIds.map((item) => String(item).trim()).filter(Boolean)
+    : [];
 
   const runner = async (client) => {
     const student = await findStudent(payload.studentId, client);
@@ -1107,10 +1134,19 @@ export async function assignClassFeesToStudent(payload, existingClient = null) {
       throw createHttpError(404, "No active fee structures found for the student's class.");
     }
 
+    const structures = structuresResult.rows.map((row) => toCamelCaseRow(row));
+    const filteredStructures =
+      selectedFeeStructureIds.length > 0
+        ? structures.filter((structure) => selectedFeeStructureIds.includes(structure.id))
+        : structures;
+
+    if (filteredStructures.length === 0) {
+      throw createHttpError(404, "No active fee structures found for the selected fee set.");
+    }
+
     const createdInvoices = [];
 
-    for (const row of structuresResult.rows) {
-      const structure = toCamelCaseRow(row);
+    for (const structure of filteredStructures) {
       const existingInvoiceResult = await client.query(
         `
           SELECT id
@@ -1380,8 +1416,6 @@ export async function getStudentFeeSummary(studentId, options = {}) {
   }
   cutoffDate.setHours(23, 59, 59, 999);
 
-  await ensureStudentMonthlyInvoicesTillDate(studentId, cutoffDate);
-
   const student = await findStudent(studentId);
   const assignments = await listFeeAssignments({ studentId });
 
@@ -1414,7 +1448,26 @@ export async function getStudentFeeSummary(studentId, options = {}) {
             : item.status
     };
   });
-  const assignmentsAsOfCutoff = dedupeOverlappingMonthlyAssignments(assignmentsAsOfCutoffRaw);
+  const assignmentsAsOfCutoff = dedupeOverlappingMonthlyAssignments(assignmentsAsOfCutoffRaw)
+    .sort((left, right) => {
+      const leftDate = left.dueDate ? new Date(left.dueDate) : null;
+      const rightDate = right.dueDate ? new Date(right.dueDate) : null;
+
+      const leftTime = leftDate && !Number.isNaN(leftDate.getTime())
+        ? leftDate.getTime()
+        : Number.POSITIVE_INFINITY;
+      const rightTime = rightDate && !Number.isNaN(rightDate.getTime())
+        ? rightDate.getTime()
+        : Number.POSITIVE_INFINITY;
+
+      if (leftTime !== rightTime) {
+        return leftTime - rightTime;
+      }
+
+      const leftCreated = new Date(left.createdAt || 0).getTime();
+      const rightCreated = new Date(right.createdAt || 0).getTime();
+      return leftCreated - rightCreated;
+    });
 
   const totals = assignmentsAsOfCutoff.reduce(
     (acc, item) => {
@@ -1432,16 +1485,12 @@ export async function getStudentFeeSummary(studentId, options = {}) {
       return false;
     }
 
-    if (!item.dueDate) {
+    const referenceDate = getInvoiceReferenceDate(item);
+    if (!referenceDate) {
       return true;
     }
 
-    const dueDate = new Date(item.dueDate);
-    if (Number.isNaN(dueDate.getTime())) {
-      return true;
-    }
-
-    return dueDate <= cutoffDate;
+    return referenceDate <= cutoffDate;
   });
 
   const paidInvoices = assignmentsAsOfCutoff.filter((item) => Number(item.totalPaid) > 0);
@@ -1483,7 +1532,26 @@ export async function getStudentFeeSummary(studentId, options = {}) {
       balance: Number(item.balance),
       status: item.status
     })),
-    paidInvoices: paidInvoices.map((item) => ({
+    paidInvoices: paidInvoices
+      .slice()
+      .sort((left, right) => {
+        const leftDate = left.dueDate ? new Date(left.dueDate) : null;
+        const rightDate = right.dueDate ? new Date(right.dueDate) : null;
+
+        const leftTime = leftDate && !Number.isNaN(leftDate.getTime())
+          ? leftDate.getTime()
+          : Number.POSITIVE_INFINITY;
+        const rightTime = rightDate && !Number.isNaN(rightDate.getTime())
+          ? rightDate.getTime()
+          : Number.POSITIVE_INFINITY;
+
+        if (leftTime !== rightTime) {
+          return leftTime - rightTime;
+        }
+
+        return new Date(left.createdAt || 0).getTime() - new Date(right.createdAt || 0).getTime();
+      })
+      .map((item) => ({
       id: item.id,
       label: formatInvoiceLineLabel(item),
       paymentAgainst: Number(item.totalPaid),
@@ -1693,8 +1761,6 @@ export async function settleStudentDuesTillDate(studentId, options = {}) {
   cutoffDate.setHours(23, 59, 59, 999);
 
   return withTransaction(async (client) => {
-    await ensureStudentMonthlyInvoicesTillDate(studentId, cutoffDate, client);
-
     const cutoffYear = cutoffDate.getFullYear();
     const cutoffMonth = cutoffDate.getMonth() + 1;
     const invoicesResult = await client.query(
