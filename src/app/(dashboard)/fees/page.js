@@ -16,7 +16,7 @@ export default async function FeesPage({ searchParams }) {
   let structures = [];
   const params = await searchParams;
   const institutionId = getScopedInstitutionId(user, params?.institutionId || undefined);
-  const defaultTab = typeof params?.tab === "string" ? params.tab : "";
+  const defaultTab = typeof params?.tab === "string" ? params.tab : "checkout";
 
   try {
     await ensureSchema();

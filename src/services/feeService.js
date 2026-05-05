@@ -1312,9 +1312,20 @@ export async function listFeeAssignments(filters = {}) {
     `
       SELECT
         fi.*,
+        s.first_name AS student_first_name,
+        s.last_name AS student_last_name,
+        s.admission_number AS student_admission_number,
+        s.class_id AS student_class_id,
+        s.academic_year AS student_academic_year,
+        s.class_name AS student_class_name,
+        s.section AS student_section,
+        i.name AS institution_name,
+        i.id AS institution_id,
         COALESCE(payments.total_paid, 0) AS total_paid,
         fi.net_amount - COALESCE(payments.total_paid, 0) AS balance
       FROM fee_invoices fi
+      JOIN students s ON s.id = fi.student_id
+      JOIN institutions i ON i.id = fi.institution_id
       LEFT JOIN (
         SELECT fee_invoice_id, SUM(amount) AS total_paid
         FROM fee_payments

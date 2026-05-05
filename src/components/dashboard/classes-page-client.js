@@ -183,7 +183,7 @@ export function ClassesPageClient({
                 <section className="space-y-3" key={academicYear}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h3 className="text-lg font-semibold">{academicYear}</h3>
+                      <h3 className="text-lg font-semibold">Academic Year - {academicYear}</h3>
                       <p className="text-sm text-muted-foreground">
                         {academicClasses.length} class{academicClasses.length === 1 ? "" : "es"} in this academic year.
                       </p>

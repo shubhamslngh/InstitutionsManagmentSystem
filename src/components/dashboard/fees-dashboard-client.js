@@ -23,6 +23,8 @@ import { FeeStructureFormDialog } from "../forms/fee-structure-form-dialog.js";
 import { MetricCard } from "./metric-card.js";
 import { StatusBadge } from "./status-badge.js";
 import { FeesOverviewChart } from "../charts/fees-overview-chart.js";
+import { StudentFeesDialog } from "./student-fees-dialog.js";
+import { DataTable } from "../tables/data-table.js";
 import { Input } from "../ui/input.js";
 import { Select } from "../ui/select.js";
 import { Skeleton } from "../ui/skeleton.js";
@@ -37,7 +39,7 @@ export function FeesDashboardClient({
   classes,
   structures,
   defaultInstitutionId = "",
-  defaultTab = "overview",
+  defaultTab = "checkout",
   currentUser
 }) {
   const [invoiceRows, setInvoiceRows] = useState(invoices);
@@ -53,15 +55,18 @@ export function FeesDashboardClient({
   const [ledgerRows, setLedgerRows] = useState([]);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerUpdatingKey, setLedgerUpdatingKey] = useState(null);
-  const [classBillingForm, setClassBillingForm] = useState({
+  const [checkoutFilters, setCheckoutFilters] = useState({
     institutionId: defaultInstitutionId || institutions[0]?.id || "",
-    classId: "",
-    dueDate: "",
-    notes: ""
+    classId: "ALL",
+    academicYear: "ALL",
+    search: ""
   });
-  const allowedTabs = new Set(["overview", "invoices", "structures", "billing", "ledger"]);
-  const [activeTab, setActiveTab] = useState(allowedTabs.has(defaultTab) ? defaultTab : "overview");
-  const [generatingClassFees, setGeneratingClassFees] = useState(false);
+  const [checkoutStudent, setCheckoutStudent] = useState(null);
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
+  const [checkoutView, setCheckoutView] = useState("cards");
+  const allowedTabs = new Set(["overview", "invoices", "structures", "checkout", "ledger", "billing"]);
+  const initialTab = defaultTab === "billing" ? "checkout" : defaultTab;
+  const [activeTab, setActiveTab] = useState(allowedTabs.has(initialTab) ? initialTab : "overview");
   const canManageFees = can(currentUser, "fees.manage");
   const monthNames = [
     "Jan",
@@ -107,11 +112,198 @@ export function FeesDashboardClient({
     () => classes.filter((item) => item.institutionId === ledgerFilters.institutionId),
     [classes, ledgerFilters.institutionId]
   );
-  const billingClasses = useMemo(
-    () => classes.filter((item) => item.institutionId === classBillingForm.institutionId),
-    [classes, classBillingForm.institutionId]
+  const checkoutClasses = useMemo(
+    () =>
+      classes.filter((item) =>
+        checkoutFilters.institutionId ? item.institutionId === checkoutFilters.institutionId : true
+      ),
+    [classes, checkoutFilters.institutionId]
+  );
+  const pendingInvoiceRows = useMemo(
+    () => invoiceRows.filter((invoice) => Number(invoice.balance || 0) > 0),
+    [invoiceRows]
+  );
+  const pendingStudentGroups = useMemo(() => {
+    const map = new Map();
+    const query = checkoutFilters.search.trim().toLowerCase();
+
+    for (const invoice of pendingInvoiceRows) {
+      if (checkoutFilters.institutionId && invoice.institutionId !== checkoutFilters.institutionId) {
+        continue;
+      }
+
+      if (checkoutFilters.classId !== "ALL") {
+        const studentClassId = invoice.studentClassId || invoice.classId || "";
+        if (studentClassId !== checkoutFilters.classId) {
+          continue;
+        }
+      }
+
+      if (checkoutFilters.academicYear !== "ALL") {
+        const studentAcademicYear = invoice.studentAcademicYear || "";
+        if (studentAcademicYear !== checkoutFilters.academicYear) {
+          continue;
+        }
+      }
+
+      const studentName = `${invoice.studentFirstName || ""} ${invoice.studentLastName || ""}`.trim();
+      const classLabel = invoice.studentClassName
+        ? invoice.studentSection
+          ? `${invoice.studentClassName} - ${invoice.studentSection}`
+          : invoice.studentClassName
+        : "Unassigned";
+      const institutionName = invoice.institutionName || "Institution";
+      const searchTarget = [
+        studentName,
+        invoice.studentAdmissionNumber,
+        classLabel,
+        invoice.studentAcademicYear,
+        institutionName,
+        invoice.title
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      if (query && !searchTarget.includes(query)) {
+        continue;
+      }
+
+      const current = map.get(invoice.studentId) || {
+        studentId: invoice.studentId,
+        institutionId: invoice.institutionId,
+        institutionName,
+        studentFirstName: invoice.studentFirstName || "",
+        studentLastName: invoice.studentLastName || "",
+        admissionNumber: invoice.studentAdmissionNumber || "",
+        classId: invoice.studentClassId || invoice.classId || "",
+        className: invoice.studentClassName || "",
+        section: invoice.studentSection || "",
+        academicYear: invoice.studentAcademicYear || "",
+        totalAssigned: 0,
+        totalPaid: 0,
+        totalBalance: 0,
+        invoiceCount: 0,
+        overdueCount: 0,
+        latestDueDate: "",
+        invoices: []
+      };
+
+      current.totalAssigned += Number(invoice.netAmount || 0);
+      current.totalPaid += Number(invoice.totalPaid || 0);
+      current.totalBalance += Number(invoice.balance || 0);
+      current.invoiceCount += 1;
+      current.overdueCount += invoice.dueDate && new Date(invoice.dueDate) < new Date() ? 1 : 0;
+      current.latestDueDate =
+        !current.latestDueDate || (invoice.dueDate && invoice.dueDate > current.latestDueDate)
+          ? invoice.dueDate || current.latestDueDate
+          : current.latestDueDate;
+      current.invoices.push(invoice);
+      map.set(invoice.studentId, current);
+    }
+
+    return Array.from(map.values())
+      .sort((left, right) => {
+        const balanceCompare = Number(right.totalBalance || 0) - Number(left.totalBalance || 0);
+        if (balanceCompare !== 0) {
+          return balanceCompare;
+        }
+
+        return getStudentDisplayName(left).localeCompare(getStudentDisplayName(right), undefined, {
+          numeric: true,
+          sensitivity: "base"
+        });
+      })
+      .map((item) => ({
+        ...item,
+        invoices: item.invoices.sort((left, right) => {
+          const leftDate = left.dueDate || left.createdAt || "";
+          const rightDate = right.dueDate || right.createdAt || "";
+          return String(leftDate).localeCompare(String(rightDate), undefined, {
+            numeric: true,
+            sensitivity: "base"
+          });
+        })
+      }));
+  }, [checkoutFilters, pendingInvoiceRows]);
+  const pendingOverdueStudents = useMemo(
+    () => pendingStudentGroups.filter((student) => student.overdueCount > 0).length,
+    [pendingStudentGroups]
+  );
+  const pendingAcademicYears = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          pendingInvoiceRows
+            .filter((invoice) =>
+              checkoutFilters.institutionId ? invoice.institutionId === checkoutFilters.institutionId : true
+            )
+            .map((invoice) => invoice.studentAcademicYear)
+            .filter(Boolean)
+        )
+      ).sort((left, right) => String(right).localeCompare(String(left), undefined, { numeric: true, sensitivity: "base" })),
+    [checkoutFilters.institutionId, pendingInvoiceRows]
+  );
+  const checkoutGroupedSections = useMemo(() => {
+    const academicYearMap = new Map();
+
+    for (const student of pendingStudentGroups) {
+      const academicYear = student.academicYear || "Unspecified";
+      const classLabel = student.className
+        ? student.section
+          ? `${student.className} - ${student.section}`
+          : student.className
+        : "Unassigned";
+
+      const classesForYear = academicYearMap.get(academicYear) || new Map();
+      const classStudents = classesForYear.get(classLabel) || [];
+      classStudents.push(student);
+      classesForYear.set(classLabel, classStudents);
+      academicYearMap.set(academicYear, classesForYear);
+    }
+
+    return Array.from(academicYearMap.entries())
+      .sort(([left], [right]) => String(right).localeCompare(String(left), undefined, { numeric: true, sensitivity: "base" }))
+      .map(([academicYear, classMap]) => ({
+        academicYear,
+        classes: Array.from(classMap.entries())
+          .map(([classLabel, students]) => ({
+            classLabel,
+            students: students.sort((left, right) =>
+              getStudentDisplayName(left).localeCompare(getStudentDisplayName(right), undefined, {
+                numeric: true,
+                sensitivity: "base"
+              })
+            )
+          }))
+          .sort((left, right) => left.classLabel.localeCompare(right.classLabel, undefined, { numeric: true, sensitivity: "base" }))
+      }));
+  }, [pendingStudentGroups]);
+
+  const checkoutTableRows = useMemo(
+    () =>
+      pendingStudentGroups.map((student) => ({
+        ...student,
+        classLabel: student.className
+          ? student.section
+            ? `${student.className} - ${student.section}`
+            : student.className
+          : "Unassigned",
+        studentName: getStudentDisplayName({
+          firstName: student.studentFirstName,
+          lastName: student.studentLastName
+        })
+      })),
+    [pendingStudentGroups]
   );
   const tabItems = [
+    {
+      id: "checkout",
+      label: "Checkout",
+      icon: NotebookPen,
+      description: "Primary fee collection queue",
+      count: pendingStudentGroups.length
+    },
     {
       id: "overview",
       label: "Overview",
@@ -132,12 +324,6 @@ export function FeesDashboardClient({
       count: structureRows.length
     },
     {
-      id: "billing",
-      label: "Billing",
-      icon: NotebookPen,
-      description: "Generate class fee invoices"
-    },
-    {
       id: "ledger",
       label: "Ledger",
       icon: Table2,
@@ -152,25 +338,30 @@ export function FeesDashboardClient({
       institutionId: nextInstitutionId,
       classId: "ALL"
     }));
-    setClassBillingForm((current) => ({
+    setCheckoutFilters((current) => ({
       ...current,
       institutionId: nextInstitutionId,
-      classId: ""
+      classId: "ALL",
+      academicYear: "ALL"
     }));
   }, [defaultInstitutionId, institutions]);
   useEffect(() => {
-    setClassBillingForm((current) => {
-      const nextClasses = classes.filter((item) => item.institutionId === current.institutionId);
-      const hasSelectedClass = nextClasses.some((item) => item.id === current.classId);
+    setCheckoutFilters((current) => {
+      const nextClasses = classes.filter((item) =>
+        current.institutionId ? item.institutionId === current.institutionId : true
+      );
+      const hasSelectedClass =
+        current.classId === "ALL" ||
+        nextClasses.some((item) => item.id === current.classId);
 
       return hasSelectedClass
         ? current
         : {
             ...current,
-            classId: ""
+            classId: "ALL"
           };
     });
-  }, [classes, classBillingForm.institutionId]);
+  }, [classes, checkoutFilters.institutionId]);
 
   useEffect(() => {
     if (!ledgerFilters.institutionId) {
@@ -313,50 +504,6 @@ export function FeesDashboardClient({
     toast.success("Fee ledger deleted.");
   }
 
-  async function handleGenerateClassFees(event) {
-    event.preventDefault();
-    if (!canManageFees) {
-      return;
-    }
-
-    if (!classBillingForm.classId) {
-      toast.error("Select a class first.");
-      return;
-    }
-
-    setGeneratingClassFees(true);
-    const response = await fetch("/api/fees/assignments/from-class", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        classId: classBillingForm.classId,
-        dueDate: classBillingForm.dueDate || null,
-        notes: classBillingForm.notes || null
-      })
-    });
-
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setGeneratingClassFees(false);
-      toast.error(result.message || "Failed to generate class fees.");
-      return;
-    }
-
-    const nextInvoices = result.data?.invoices || [];
-    if (nextInvoices.length > 0) {
-      setInvoiceRows((current) => [...nextInvoices, ...current]);
-    }
-
-    toast.success(
-      result.data?.createdCount > 0
-        ? `${result.data.createdCount} fee invoice(s) generated for the class.`
-        : "No new invoices were needed for this class."
-    );
-    setGeneratingClassFees(false);
-  }
-
   function getLedgerSummary(row) {
     const paidMonths = row.months.filter((month) => month.isPaid).length;
     const dueMonths = Math.max(row.months.length - paidMonths, 0);
@@ -412,6 +559,153 @@ export function FeesDashboardClient({
       return [nextStructure, ...current];
     });
     setEditingStructure(null);
+  }
+
+  function openCheckoutStudent(studentGroup) {
+    if (!studentGroup) {
+      return;
+    }
+
+    setCheckoutStudent({
+      id: studentGroup.studentId,
+      institutionId: studentGroup.institutionId,
+      firstName: studentGroup.studentFirstName,
+      lastName: studentGroup.studentLastName,
+      admissionNumber: studentGroup.admissionNumber,
+      className: studentGroup.className,
+      section: studentGroup.section,
+      academicYear: studentGroup.academicYear
+    });
+    setCheckoutDialogOpen(true);
+  }
+
+  function downloadCheckoutCsv() {
+    if (checkoutTableRows.length === 0) {
+      toast.error("No pending students to export.");
+      return;
+    }
+
+    const headers = [
+      "Student",
+      "Admission No.",
+      "Institution",
+      "Class",
+      "Academic Year",
+      "Invoices",
+      "Assigned",
+      "Paid",
+      "Due",
+      "Overdue Count",
+      "Latest Due Date"
+    ];
+    const csvRows = checkoutTableRows.map((row) => [
+      row.studentName,
+      row.admissionNumber || "NA",
+      row.institutionName || "NA",
+      row.classLabel || "Unassigned",
+      row.academicYear || "NA",
+      row.invoiceCount,
+      Number(row.totalAssigned || 0).toFixed(2),
+      Number(row.totalPaid || 0).toFixed(2),
+      Number(row.totalBalance || 0).toFixed(2),
+      row.overdueCount,
+      row.latestDueDate || "NA"
+    ]);
+
+    const csv = [headers, ...csvRows]
+      .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `pending-fees-${Date.now()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Excel-compatible CSV download started.");
+  }
+
+  function printCheckoutPdf() {
+    if (checkoutTableRows.length === 0) {
+      toast.error("No pending students to export.");
+      return;
+    }
+
+    const rowsMarkup = checkoutTableRows
+      .map(
+        (row) => `
+          <tr>
+            <td>${row.studentName}</td>
+            <td>${row.admissionNumber || "NA"}</td>
+            <td>${row.institutionName || "NA"}</td>
+            <td>${row.classLabel || "Unassigned"}</td>
+            <td>${row.academicYear || "NA"}</td>
+            <td>${row.invoiceCount}</td>
+            <td>${formatCurrency(row.totalAssigned || 0)}</td>
+            <td>${formatCurrency(row.totalPaid || 0)}</td>
+            <td>${formatCurrency(row.totalBalance || 0)}</td>
+            <td>${row.overdueCount}</td>
+            <td>${row.latestDueDate ? formatDate(row.latestDueDate) : "NA"}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const html = `<!DOCTYPE html>
+      <html>
+        <head>
+          <title>Pending Fee Checkout</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
+            h1 { margin: 0 0 8px; font-size: 20px; }
+            p { margin: 0 0 16px; color: #555; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
+            th { background: #f5f5f5; }
+          </style>
+        </head>
+        <body>
+          <h1>Pending Fee Checkout</h1>
+          <p>${checkoutTableRows.length} student(s) with pending fees.</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Admission No.</th>
+                <th>Institution</th>
+                <th>Class</th>
+                <th>Academic Year</th>
+                <th>Invoices</th>
+                <th>Assigned</th>
+                <th>Paid</th>
+                <th>Due</th>
+                <th>Overdue</th>
+                <th>Latest Due Date</th>
+              </tr>
+            </thead>
+            <tbody>${rowsMarkup}</tbody>
+          </table>
+          <script>
+            window.onload = () => {
+              window.print();
+              setTimeout(() => window.close(), 300);
+            };
+          </script>
+        </body>
+      </html>`;
+
+    const popup = window.open("", "_blank", "noopener,noreferrer,width=1200,height=800");
+    if (!popup) {
+      toast.error("Popup blocked. Allow popups to download PDF.");
+      return;
+    }
+
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
   }
 
   function renderOverviewTab() {
@@ -567,80 +861,346 @@ export function FeesDashboardClient({
     );
   }
 
-  function renderBillingTab() {
+  function renderCheckoutTab() {
+    const checkoutColumns = [
+      {
+        accessorKey: "studentName",
+        meta: { label: "Student" },
+        header: "Student",
+        cell: ({ row }) => (
+          <div className="space-y-1">
+            <p className="font-medium">{row.original.studentName}</p>
+            <p className="text-xs text-muted-foreground">
+              {row.original.admissionNumber || "NA"} • {row.original.institutionName || "NA"}
+            </p>
+          </div>
+        )
+      },
+      {
+        accessorKey: "classLabel",
+        meta: { label: "Class" },
+        header: "Class"
+      },
+      {
+        accessorKey: "academicYear",
+        meta: { label: "Academic Year" },
+        header: "Academic Year"
+      },
+      {
+        accessorKey: "invoiceCount",
+        meta: { label: "Invoices" },
+        header: "Invoices"
+      },
+      {
+        accessorKey: "totalAssigned",
+        meta: { label: "Assigned" },
+        header: "Assigned",
+        cell: ({ row }) => formatCurrency(row.original.totalAssigned || 0)
+      },
+      {
+        accessorKey: "totalPaid",
+        meta: { label: "Paid" },
+        header: "Paid",
+        cell: ({ row }) => formatCurrency(row.original.totalPaid || 0)
+      },
+      {
+        accessorKey: "totalBalance",
+        meta: { label: "Due" },
+        header: "Due",
+        cell: ({ row }) => formatCurrency(row.original.totalBalance || 0)
+      },
+      {
+        accessorKey: "overdueCount",
+        meta: { label: "Overdue" },
+        header: "Overdue"
+      },
+      {
+        accessorKey: "latestDueDate",
+        meta: { label: "Latest Due Date" },
+        header: "Latest Due Date",
+        cell: ({ row }) => (row.original.latestDueDate ? formatDate(row.original.latestDueDate) : "NA")
+      },
+      {
+        id: "actions",
+        meta: { label: "Actions" },
+        header: "Actions",
+        cell: ({ row }) => (
+          <Button size="sm" type="button" variant="outline" onClick={() => openCheckoutStudent(row.original)}>
+            Open
+          </Button>
+        )
+      }
+    ];
+
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Generate Fees For Whole Class</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Apply active class fee structures to every student assigned to a class.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <form className="grid gap-4 md:grid-cols-4" onSubmit={handleGenerateClassFees}>
-            <Select
-              value={classBillingForm.institutionId}
-              onChange={(event) =>
-                setClassBillingForm((current) => ({
-                  ...current,
-                  institutionId: event.target.value,
-                  classId: ""
-                }))
-              }
-            >
-              {institutions.map((institution) => (
-                <option key={institution.id} value={institution.id}>
-                  {institution.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              value={classBillingForm.classId}
-              onChange={(event) =>
-                setClassBillingForm((current) => ({
-                  ...current,
-                  classId: event.target.value
-                }))
-              }
-            >
-              <option value="">Select Class</option>
-              {billingClasses.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                  {item.section ? ` - ${item.section}` : ""}
-                </option>
-              ))}
-            </Select>
-            <Input
-              type="date"
-              value={classBillingForm.dueDate}
-              onChange={(event) =>
-                setClassBillingForm((current) => ({
-                  ...current,
-                  dueDate: event.target.value
-                }))
-              }
-            />
-            {canManageFees ? (
-              <Button disabled={generatingClassFees} type="submit">
-                {generatingClassFees ? "Generating..." : "Generate Whole Class Fees"}
-              </Button>
-            ) : null}
-            <div className="md:col-span-4">
-              <Input
-                placeholder="Optional note for generated invoices"
-                value={classBillingForm.notes}
-                onChange={(event) =>
-                  setClassBillingForm((current) => ({
-                    ...current,
-                    notes: event.target.value
-                  }))
-                }
-              />
+      <div className="space-y-6">
+        <Card className="border-slate-200 bg-gradient-to-r from-slate-50 via-white to-sky-50">
+          <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1">
+              <CardTitle>Pending Fee Checkout</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Review students with outstanding balances. This list is built from existing invoices only.
+              </p>
             </div>
-          </form>
-        </CardContent>
-      </Card>
+            <div className="flex flex-wrap gap-2">
+              <div className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-600">
+                {pendingStudentGroups.length} students
+              </div>
+              <div className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-600">
+                {formatCurrency(pendingStudentGroups.reduce((sum, item) => sum + Number(item.totalBalance || 0), 0))}{" "}
+                outstanding
+              </div>
+              <div className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-600">
+                {pendingOverdueStudents} overdue
+              </div>
+              <div className="rounded-full border bg-white px-3 py-1 text-xs font-medium text-slate-600">
+                {checkoutGroupedSections.length} academic years
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => setCheckoutView("cards")}
+                  type="button"
+                  variant={checkoutView === "cards" ? "default" : "outline"}
+                >
+                  Cards
+                </Button>
+                <Button
+                  onClick={() => setCheckoutView("table")}
+                  type="button"
+                  variant={checkoutView === "table" ? "default" : "outline"}
+                >
+                  List
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={downloadCheckoutCsv} type="button" variant="outline">
+                  Download Excel
+                </Button>
+                <Button onClick={printCheckoutPdf} type="button" variant="outline">
+                  Download PDF
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-4">
+              <div className="space-y-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Institution</p>
+                <Select
+                  value={checkoutFilters.institutionId}
+                  onChange={(event) =>
+                    setCheckoutFilters((current) => ({
+                      ...current,
+                      institutionId: event.target.value,
+                      classId: "ALL",
+                      academicYear: "ALL"
+                    }))
+                  }
+                >
+                  <option value="">All Institutions</option>
+                  {institutions.map((institution) => (
+                    <option key={institution.id} value={institution.id}>
+                      {institution.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Class</p>
+                <Select
+                  value={checkoutFilters.classId}
+                  onChange={(event) =>
+                    setCheckoutFilters((current) => ({
+                      ...current,
+                      classId: event.target.value,
+                      academicYear: "ALL"
+                    }))
+                  }
+                >
+                  <option value="ALL">All Classes</option>
+                  {checkoutClasses.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                      {item.section ? ` - ${item.section}` : ""}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Academic Year</p>
+                <Select
+                  value={checkoutFilters.academicYear}
+                  onChange={(event) =>
+                    setCheckoutFilters((current) => ({
+                      ...current,
+                      academicYear: event.target.value
+                    }))
+                  }
+                >
+                  <option value="ALL">All Years</option>
+                  {pendingAcademicYears.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Search</p>
+                <Input
+                  placeholder="Name, admission, class, institution"
+                  value={checkoutFilters.search}
+                  onChange={(event) =>
+                    setCheckoutFilters((current) => ({
+                      ...current,
+                      search: event.target.value
+                    }))
+                  }
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
+          <MetricCard icon={Receipt} label="Pending Students" value={pendingStudentGroups.length} />
+          <MetricCard
+            icon={CreditCard}
+            label="Outstanding"
+            value={formatCurrency(pendingStudentGroups.reduce((sum, item) => sum + Number(item.totalBalance || 0), 0))}
+            tone="danger"
+          />
+          <MetricCard icon={Wallet} label="Overdue Students" value={pendingOverdueStudents} tone="warning" />
+          <MetricCard
+            icon={NotebookPen}
+            label="Invoices in View"
+            value={pendingStudentGroups.reduce((sum, item) => sum + Number(item.invoiceCount || 0), 0)}
+            tone="success"
+          />
+        </div>
+
+        {checkoutView === "cards" ? (
+          <div className="space-y-6">
+            {checkoutGroupedSections.length === 0 ? (
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">
+                  No pending fees match the selected filters.
+                </CardContent>
+              </Card>
+            ) : (
+              checkoutGroupedSections.map((yearGroup) => (
+                <Card key={yearGroup.academicYear}>
+                  <CardHeader className="flex flex-row items-center justify-between gap-4 border-b border-border/80">
+                    <div>
+                      <CardTitle>{yearGroup.academicYear}</CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        {yearGroup.classes.reduce((sum, item) => sum + item.students.length, 0)} student(s)
+                      </p>
+                    </div>
+                    <div className="rounded-full border bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                      Academic Year Group
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-6 p-5">
+                    {yearGroup.classes.map((classGroup) => (
+                      <div key={`${yearGroup.academicYear}-${classGroup.classLabel}`} className="space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <h3 className="text-base font-semibold">{classGroup.classLabel}</h3>
+                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                            {classGroup.students.length} student(s)
+                          </span>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                          {classGroup.students.map((student) => (
+                            <button
+                              className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
+                              key={student.studentId}
+                              onClick={() => openCheckoutStudent(student)}
+                              type="button"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="space-y-1">
+                                  <p className="font-semibold">{student.studentName}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {student.admissionNumber || "NA"} • {student.institutionName || "Institution"}
+                                  </p>
+                                </div>
+                                <div className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+                                  {formatCurrency(student.totalBalance)}
+                                </div>
+                              </div>
+
+                              <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                                <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+                                  {student.classLabel}
+                                </span>
+                                <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+                                  {student.academicYear || "Academic year NA"}
+                                </span>
+                                <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+                                  {student.invoiceCount} invoice(s)
+                                </span>
+                                {student.overdueCount > 0 ? (
+                                  <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-800">
+                                    {student.overdueCount} overdue
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
+                                <div className="rounded-xl bg-slate-50 p-3">
+                                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Assigned</p>
+                                  <p className="mt-1 font-semibold">{formatCurrency(student.totalAssigned)}</p>
+                                </div>
+                                <div className="rounded-xl bg-slate-50 p-3">
+                                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Paid</p>
+                                  <p className="mt-1 font-semibold">{formatCurrency(student.totalPaid)}</p>
+                                </div>
+                                <div className="rounded-xl bg-slate-50 p-3">
+                                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Due</p>
+                                  <p className="mt-1 font-semibold">{formatCurrency(student.totalBalance)}</p>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+                                <span>Open checkout</span>
+                                <span>{student.latestDueDate ? `Due ${formatDate(student.latestDueDate)}` : "No due date"}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        ) : (
+          <DataTable
+            title="Pending Students"
+            columns={checkoutColumns}
+            data={checkoutTableRows}
+            searchPlaceholder="Search pending fee students"
+            emptyTitle="No pending fee students"
+            emptyDescription="No pending fee records match the selected filters."
+            compact
+            actions={
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={downloadCheckoutCsv} type="button" variant="outline">
+                  Download Excel
+                </Button>
+                <Button onClick={printCheckoutPdf} type="button" variant="outline">
+                  Download PDF
+                </Button>
+              </div>
+            }
+          />
+        )}
+      </div>
     );
   }
 
@@ -854,7 +1414,7 @@ export function FeesDashboardClient({
       {activeTab === "overview" ? renderOverviewTab() : null}
       {activeTab === "invoices" ? renderInvoicesTab() : null}
       {activeTab === "structures" ? renderStructuresTab() : null}
-      {activeTab === "billing" ? renderBillingTab() : null}
+      {activeTab === "checkout" ? renderCheckoutTab() : null}
       {activeTab === "ledger" ? renderLedgerTab() : null}
 
       <FeeStructureFormDialog
@@ -871,6 +1431,23 @@ export function FeesDashboardClient({
         defaultInstitutionId={institutions[0]?.id || ""}
         onSuccess={handleStructureSuccess}
       />
+
+      <StudentFeesDialog
+        open={checkoutDialogOpen}
+        onOpenChange={(nextOpen) => {
+          setCheckoutDialogOpen(nextOpen);
+          if (!nextOpen) {
+            setCheckoutStudent(null);
+          }
+        }}
+        student={checkoutStudent}
+      />
     </div>
   );
+}
+
+function getStudentDisplayName(student) {
+  const firstName = student?.firstName ?? student?.studentFirstName ?? "";
+  const lastName = student?.lastName ?? student?.studentLastName ?? "";
+  return `${firstName} ${lastName}`.trim() || "NA";
 }
