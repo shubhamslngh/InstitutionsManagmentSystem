@@ -3,6 +3,14 @@ import { ArrowRight, Building2, CreditCard, GraduationCap, PlusCircle, Users } f
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Badge } from "../ui/badge.js";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "../ui/table.js";
 import { MetricCard } from "./metric-card.js";
 import { StatusBadge } from "./status-badge.js";
 import { formatCurrency } from "../../lib/currency.js";
@@ -189,19 +197,40 @@ export function OverviewPageClient({ snapshot, userRole }) {
               <Link href="/fees/invoices">View All</Link>
             </Button>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             {snapshot.recentInvoices.length === 0 ? (
               <p className="text-sm text-muted-foreground">No invoice records yet.</p>
             ) : (
-              snapshot.recentInvoices.map((invoice) => (
-                <div className="flex flex-col gap-3 rounded-md border p-4 md:flex-row md:items-center md:justify-between" key={invoice.id}>
-                  <div>
-                    <p className="font-medium">{invoice.first_name} {invoice.last_name || ""}</p>
-                    <p className="text-xs text-muted-foreground">{invoice.institution_name} • {invoice.title}</p>
-                  </div>
-                  <StatusBadge status={invoice.status} />
-                </div>
-              ))
+              <div className="overflow-hidden rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableHead>Student</TableHead>
+                      <TableHead>Institution</TableHead>
+                      <TableHead>Invoice</TableHead>
+                      <TableHead className="text-right">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {snapshot.recentInvoices.map((invoice) => (
+                      <TableRow key={invoice.id}>
+                        <TableCell className="py-3 font-medium">
+                          {invoice.first_name} {invoice.last_name || ""}
+                        </TableCell>
+                        <TableCell className="max-w-[11rem] truncate py-3 text-muted-foreground">
+                          {invoice.institution_name || "NA"}
+                        </TableCell>
+                        <TableCell className="max-w-[12rem] truncate py-3">
+                          {invoice.title || "Invoice"}
+                        </TableCell>
+                        <TableCell className="py-3 text-right">
+                          <StatusBadge status={invoice.status} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </CardContent>
         </Card>

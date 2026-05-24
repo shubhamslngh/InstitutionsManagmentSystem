@@ -9,12 +9,12 @@ import {
   CalendarDays,
   ChevronRight,
   IndianRupee,
-  Plus,
   School,
   Users
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button.js";
+import { AnimatedAddButton } from "../ui/animated-add-button.js";
 import { MetricCard } from "./metric-card.js";
 import { Select } from "../ui/select.js";
 import { StatusBadge } from "./status-badge.js";
@@ -120,6 +120,7 @@ export function StudentsPageClient({
   const [promotionAcademicYear, setPromotionAcademicYear] = useState("");
   const [promotionSubmitting, setPromotionSubmitting] = useState(false);
   const [showClassDetail, setShowClassDetail] = useState(false);
+  const [studentsTableLoading, setStudentsTableLoading] = useState(false);
   const canManageStudents = can(currentUser, "students.manage");
   const canPromoteStudents = can(currentUser, "students.promote");
   const canReadFees = can(currentUser, "fees.read");
@@ -184,6 +185,11 @@ export function StudentsPageClient({
 
   const selectedPromotionTargetAcademicYear = selectedPromotionTargetClass?.academicYear || "";
   const selectedPromotionTargetMissingYear = Boolean(selectedPromotionTargetClass && !selectedPromotionTargetAcademicYear);
+
+  useEffect(() => {
+    setStudents(initialStudents);
+    setSelectedStudentIds([]);
+  }, [initialStudents]);
 
   useEffect(() => {
     setInstitutionFilter(defaultInstitutionId);
@@ -367,6 +373,20 @@ export function StudentsPageClient({
       }),
     [filteredStudents]
   );
+
+  useEffect(() => {
+    if (!showClassDetail) {
+      setStudentsTableLoading(false);
+      return undefined;
+    }
+
+    setStudentsTableLoading(true);
+    const timer = window.setTimeout(() => {
+      setStudentsTableLoading(false);
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [classFilter, classWiseStudents.length, showClassDetail]);
 
   const selectedClassStudents = useMemo(
     () =>
@@ -701,22 +721,7 @@ export function StudentsPageClient({
         <div className="rounded-2xl bg-gradient-to-br from-sky-50 to-indigo-50 p-[1px]">
           <MetricCard icon={Users} label="Total Students" value={students.length} />
         </div>
-        <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-cyan-50 p-[1px]">
-          <MetricCard
-            icon={Users}
-            label={showClassDetail && classFilter ? "Class Students" : "Visible Students"}
-            value={filteredStudents.length}
-            tone="success"
-          />
-        </div>
-        <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-rose-50 p-[1px]">
-          <MetricCard
-            icon={School}
-            label="Academic Years"
-            value={academicYearGroups.length}
-            tone="warning"
-          />
-        </div>
+       
         <div className="rounded-2xl bg-gradient-to-br from-violet-50 to-fuchsia-50 p-[1px]">
           <MetricCard
             icon={Building2}
@@ -767,16 +772,16 @@ export function StudentsPageClient({
               </Select>
             </div>
             {canManageStudents ? (
-              <Button
+              <AnimatedAddButton
                 className="shadow-sm"
+                variant="Addbtn"
                 onClick={() => {
                   setEditingStudent(null);
                   setDialogOpen(true);
                 }}
               >
-                <Plus className="h-4 w-4" />
                 Add Student
-              </Button>
+              </AnimatedAddButton>
             ) : null}
           </div>
 
@@ -825,12 +830,10 @@ export function StudentsPageClient({
                           <div className="flex items-start justify-between gap-3">
                             <div className="space-y-2">
                               <div className="flex flex-wrap items-center gap-2">
-                                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                {/* <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
                                   {academicClass.section || "Main"}
-                                </span>
-                                <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-800">
-                                  {roster.length} students
-                                </span>
+                                </span> */}
+                                
                               </div>
                               <div className="space-y-1">
                                 <p className="text-base font-semibold tracking-tight">{getClassLabel(academicClass)}</p>
@@ -839,8 +842,8 @@ export function StudentsPageClient({
                                 ) : null}
                               </div>
                             </div>
-                            <div className="rounded-xl bg-slate-50 p-2 text-slate-400">
-                              <ChevronRight className="h-5 w-5" />
+                            <div className="rounded-xl bg-slate-50 p-2 text-slate-400 hover:text-green-600 hover:scale-110 hover:transition-transform duration-75">
+                              <ChevronRight  onClick={() => openClassDetail(academicClass.id)}  className="h-5 w-5 hover:text-green-600 hover:scale-130 duration-500 hover:transition-transform " />
                             </div>
                           </div>
 
@@ -864,7 +867,7 @@ export function StudentsPageClient({
                               Open Roster
                             </Button>
                             {canManageStudents ? (
-                              <Button
+                              <AnimatedAddButton
                                 className="flex-1"
                                 onClick={() => {
                                   setInstitutionFilter(academicClass.institutionId);
@@ -877,10 +880,9 @@ export function StudentsPageClient({
                                   });
                                   setDialogOpen(true);
                                 }}
-                                type="button"
                               >
                                 Add Student
-                              </Button>
+                              </AnimatedAddButton>
                             ) : null}
                           </div>
                         </CardContent>
@@ -958,9 +960,9 @@ export function StudentsPageClient({
                 </Button>
               ) : null}
               {canManageStudents ? (
-                <Button disabled={!institutionFilter} onClick={openCreateStudentForClass} type="button" variant="outline">
+                <AnimatedAddButton disabled={!institutionFilter} onClick={openCreateStudentForClass}>
                   Add To This Class
-                </Button>
+                </AnimatedAddButton>
               ) : null}
               {canPromoteStudents ? (
                 <Button disabled={!selectedStudentIds.length} onClick={openPromotionDialog} type="button">
@@ -992,7 +994,7 @@ export function StudentsPageClient({
 
       {showClassDetail ? (
         <DataTable
-          title={`Student Registry: ${classFilter === "__unassigned__" ? "Unassigned Students" : getClassLabel(selectedClassRecord)}`}
+          title={`Class : ${classFilter === "__unassigned__" ? "Unassigned Students" : getClassLabel(selectedClassRecord)}`}
           columns={columns}
           data={classWiseStudents}
           cardClassName="overflow-hidden border-rose-200 bg-gradient-to-br from-rose-50 via-amber-50 to-sky-50"
@@ -1026,6 +1028,7 @@ export function StudentsPageClient({
             initialError ||
             "Add your first student admission and the registry will appear here with sorting, search, and actions."
           }
+          loading={studentsTableLoading}
           searchPlaceholder="Search by name, admission number, class, or course"
         />
       ) : (

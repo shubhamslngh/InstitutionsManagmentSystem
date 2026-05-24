@@ -3,7 +3,7 @@ import { cn } from "../../lib/utils.js";
 export function Card({ className, ...props }) {
   return (
     <section
-      className={cn("rounded-md border bg-card text-card-foreground shadow-sm", className)}
+      className={cn("rounded-md border bg-card text-card-foreground shadow-md transition-all duration-300 ease-out", className)}
       {...props}
     />
   );

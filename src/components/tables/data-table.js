@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger
 } from "../ui/dropdown-menu.js";
 import { Input } from "../ui/input.js";
+import { LottieLoader } from "../ui/lottie-loader.js";
 import { Skeleton } from "../ui/skeleton.js";
 import {
   Table,
@@ -74,7 +75,7 @@ export function DataTable({
   );
 
   return (
-    <Card className={cardClassName}>
+    <Card className={cn("motion-card", cardClassName)}>
       <CardHeader className={cn("flex flex-col gap-4 border-b border-border/80 md:flex-row md:items-center md:justify-between", headerClassName)}>
         <div className="space-y-1">
           <CardTitle>{title}</CardTitle>
@@ -130,15 +131,27 @@ export function DataTable({
             </TableHeader>
             <TableBody>
               {loading
-                ? Array.from({ length: 5 }).map((_, index) => (
-                    <TableRow key={`skeleton-${index}`}>
-                      {columns.map((column, columnIndex) => (
-                        <TableCell className={compact ? "px-3 py-2 text-[13px]" : ""} key={`${index}-${columnIndex}`}>
-                          <Skeleton className="h-4 w-full max-w-40" />
+                ? (
+                    <>
+                      <TableRow>
+                        <TableCell className="py-8 text-center" colSpan={columns.length}>
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <LottieLoader className="h-24 w-24" name="dataTable" />
+                            <p className="text-sm font-medium text-muted-foreground">Loading records...</p>
+                          </div>
                         </TableCell>
+                      </TableRow>
+                      {Array.from({ length: 3 }).map((_, index) => (
+                        <TableRow key={`skeleton-${index}`}>
+                          {columns.map((column, columnIndex) => (
+                            <TableCell className={compact ? "px-3 py-2 text-[13px]" : ""} key={`${index}-${columnIndex}`}>
+                              <Skeleton className="h-4 w-full max-w-40" />
+                            </TableCell>
+                          ))}
+                        </TableRow>
                       ))}
-                    </TableRow>
-                  ))
+                    </>
+                  )
                 : table.getRowModel().rows.length > 0
                   ? table.getRowModel().rows.map((row) => (
                       <TableRow key={row.id}>

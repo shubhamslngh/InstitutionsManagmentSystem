@@ -4,7 +4,7 @@
   "description": "Next.js school and college management system with MySQL.",
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "NEXT_DISABLE_WEBPACK_CACHE=1 next dev",
     "build": "next build",
     "start": "next start",
     "check": "next build",
@@ -19,6 +19,7 @@
   "license": "MIT",
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@lottiefiles/dotlottie-react": "^0.19.2",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",

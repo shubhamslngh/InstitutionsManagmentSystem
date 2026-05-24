@@ -7,7 +7,6 @@ import {
   IndianRupee,
   LayoutDashboard,
   NotebookPen,
-  Plus,
   Receipt,
   School,
   Table2,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button.js";
+import { AnimatedAddButton } from "../ui/animated-add-button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Badge } from "../ui/badge.js";
 import { ConfirmDialog } from "./confirm-dialog.js";
@@ -28,6 +28,14 @@ import { DataTable } from "../tables/data-table.js";
 import { Input } from "../ui/input.js";
 import { Select } from "../ui/select.js";
 import { Skeleton } from "../ui/skeleton.js";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "../ui/table.js";
 import { formatCurrency } from "../../lib/currency.js";
 import { formatDate } from "../../lib/dateFormat.js";
 import { can } from "../../lib/permissions.js";
@@ -43,7 +51,7 @@ export function FeesDashboardClient({
   currentUser
 }) {
   const [invoiceRows, setInvoiceRows] = useState(invoices);
-  const [paymentRows] = useState(payments);
+  const [paymentRows, setPaymentRows] = useState(payments);
   const [structureRows, setStructureRows] = useState(structures);
   const [structureDialogOpen, setStructureDialogOpen] = useState(false);
   const [editingStructure, setEditingStructure] = useState(null);
@@ -63,7 +71,7 @@ export function FeesDashboardClient({
   });
   const [checkoutStudent, setCheckoutStudent] = useState(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
-  const [checkoutView, setCheckoutView] = useState("cards");
+  const [checkoutView, setCheckoutView] = useState("table");
   const allowedTabs = new Set(["overview", "invoices", "structures", "checkout", "ledger", "billing"]);
   const initialTab = defaultTab === "billing" ? "checkout" : defaultTab;
   const [activeTab, setActiveTab] = useState(allowedTabs.has(initialTab) ? initialTab : "overview");
@@ -330,6 +338,18 @@ export function FeesDashboardClient({
       description: "Monthly payment tracking"
     }
   ];
+
+  useEffect(() => {
+    setInvoiceRows(invoices);
+  }, [invoices]);
+
+  useEffect(() => {
+    setPaymentRows(payments);
+  }, [payments]);
+
+  useEffect(() => {
+    setStructureRows(structures);
+  }, [structures]);
 
   useEffect(() => {
     const nextInstitutionId = defaultInstitutionId || institutions[0]?.id || "";
@@ -752,30 +772,44 @@ export function FeesDashboardClient({
           <CardTitle>Invoice Snapshot</CardTitle>
           <p className="text-sm text-muted-foreground">Recent invoices grouped for quick review.</p>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent>
           {recentInvoices.length === 0 ? (
             <p className="text-sm text-muted-foreground">No invoices created yet.</p>
           ) : (
-            recentInvoices.map((invoice) => (
-              <div
-                className="flex flex-col gap-3 rounded-md border p-4 md:flex-row md:items-center md:justify-between"
-                key={invoice.id}
-              >
-                <div>
-                  <p className="font-medium">{invoice.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    Net {formatCurrency(invoice.netAmount)} • Due {formatDate(invoice.dueDate)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <p className="text-sm font-medium">{formatCurrency(invoice.balance)}</p>
-                    <p className="text-xs text-muted-foreground">Outstanding</p>
-                  </div>
-                  <StatusBadge status={invoice.status} />
-                </div>
-              </div>
-            ))
+            <div className="overflow-hidden rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
+                    <TableHead>Invoice</TableHead>
+                    <TableHead className="text-right">Net</TableHead>
+                    <TableHead>Due</TableHead>
+                    <TableHead className="text-right">Outstanding</TableHead>
+                    <TableHead className="text-right">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recentInvoices.map((invoice) => (
+                    <TableRow key={invoice.id}>
+                      <TableCell className="max-w-[14rem] truncate py-3 font-medium">
+                        {invoice.title || "Invoice"}
+                      </TableCell>
+                      <TableCell className="py-3 text-right">
+                        {formatCurrency(invoice.netAmount)}
+                      </TableCell>
+                      <TableCell className="py-3 text-muted-foreground">
+                        {formatDate(invoice.dueDate)}
+                      </TableCell>
+                      <TableCell className="py-3 text-right font-medium">
+                        {formatCurrency(invoice.balance)}
+                      </TableCell>
+                      <TableCell className="py-3 text-right">
+                        <StatusBadge status={invoice.status} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -793,10 +827,9 @@ export function FeesDashboardClient({
             </p>
           </div>
           {canManageFees ? (
-            <Button onClick={() => setStructureDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
+            <AnimatedAddButton onClick={() => setStructureDialogOpen(true)}>
               Add Fee Structure
-            </Button>
+            </AnimatedAddButton>
           ) : null}
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1123,10 +1156,10 @@ export function FeesDashboardClient({
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="space-y-1">
-                                  <p className="font-semibold">{student.studentName}</p>
                                   <p className="text-sm text-muted-foreground">
                                     {student.admissionNumber || "NA"} • {student.institutionName || "Institution"}
                                   </p>
+
                                 </div>
                                 <div className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
                                   {formatCurrency(student.totalBalance)}
@@ -1135,11 +1168,17 @@ export function FeesDashboardClient({
 
                               <div className="mt-4 flex flex-wrap gap-2 text-xs">
                                 <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
-                                  {student.classLabel}
+                                  {student.className}
                                 </span>
                                 <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
                                   {student.academicYear || "Academic year NA"}
                                 </span>
+                                <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+                                  {`${student.studentFirstName} ${student.studentLastName}`.trim()
+                                    || "Student "}
+                                  {console.log(student) || ""}
+                                </span>
+                                
                                 <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
                                   {student.invoiceCount} invoice(s)
                                 </span>

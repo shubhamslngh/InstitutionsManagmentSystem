@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Printer } from "lucide-react";
+import { CalendarDays, CreditCard, FileText, IndianRupee, Printer, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "../../lib/currency.js";
 import { formatDate } from "../../lib/dateFormat.js";
+import { cn } from "../../lib/utils.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import {
@@ -17,6 +18,14 @@ import {
 } from "../ui/dialog.js";
 import { Input } from "../ui/input.js";
 import { Select } from "../ui/select.js";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "../ui/table.js";
 import { Textarea } from "../ui/textarea.js";
 import { StatusBadge } from "./status-badge.js";
 
@@ -106,6 +115,18 @@ function getMonthlyLedgerRowSummary(row) {
   const paidMonths = row.months.filter((month) => month.isPaid).length;
   const dueMonths = row.months.length - paidMonths;
   return { paidMonths, dueMonths };
+}
+
+function DialogEmptyState({ icon: Icon, title, description }) {
+  return (
+    <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl bg-white px-6 py-10 text-center shadow-sm">
+      <div className="flex size-12 items-center justify-center rounded-full bg-sky-50 text-sky-600">
+        <Icon className="size-6" />
+      </div>
+      <h3 className="mt-4 text-sm font-semibold text-slate-950">{title}</h3>
+      <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
+    </div>
+  );
 }
 
 function getReceiptMonthLabel(receipt) {
@@ -289,7 +310,7 @@ function getPrintableCopyMarkup(receipt, copyLabel) {
   `;
 }
 
-function getPrintableReceiptMarkup(receipt) {
+export function getPrintableReceiptMarkup(receipt) {
   return `<!DOCTYPE html>
   <html lang="en">
     <head>
@@ -464,7 +485,7 @@ function getPrintableReceiptMarkup(receipt) {
   </html>`;
 }
 
-function ReceiptPreview({ receipt }) {
+export function ReceiptPreview({ receipt }) {
   if (!receipt) {
     return null;
   }
@@ -626,6 +647,7 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
   const [submittingInvoice, setSubmittingInvoice] = useState(false);
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [activeTab, setActiveTab] = useState("info");
+  const [activeBillingForm, setActiveBillingForm] = useState("");
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
@@ -635,6 +657,10 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
   const [studentLedgerRows, setStudentLedgerRows] = useState([]);
   const [studentLedgerLoading, setStudentLedgerLoading] = useState(false);
   const [studentLedgerUpdatingKey, setStudentLedgerUpdatingKey] = useState("");
+  const payableInvoices = useMemo(
+    () => invoices.filter((invoice) => Number(invoice.balance || 0) > 0),
+    [invoices]
+  );
 
   async function loadFeeData(studentId) {
     setLoading(true);
@@ -658,11 +684,14 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
     }
 
     const nextInvoices = invoiceResult.data || [];
+    const nextPayableInvoices = nextInvoices.filter((invoice) => Number(invoice.balance || 0) > 0);
     setInvoices(nextInvoices);
     setPayments(paymentResult.data || []);
     setPaymentForm((current) => ({
       ...current,
-      feeInvoiceId: current.feeInvoiceId || nextInvoices[0]?.id || ""
+      feeInvoiceId: nextPayableInvoices.some((invoice) => invoice.id === current.feeInvoiceId)
+        ? current.feeInvoiceId
+        : nextPayableInvoices[0]?.id || ""
     }));
     setLoading(false);
   }
@@ -690,7 +719,22 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
       throw new Error(result.message || "Failed to load monthly ledger.");
     }
 
-    const rows = (result.data?.rows || []).filter((row) => row.studentId === studentData.id);
+    const rows = (result.data?.rows || [])
+      .filter((row) => row.studentId === studentData.id)
+      .map((row) => ({
+        ...row,
+        months: (row.months || [])
+          .filter((month) => month.invoiceId)
+          .map((month) => {
+            const isInvoiceFullyPaid = Number(month.balance || 0) <= 0;
+            return {
+              ...month,
+              isInvoiceFullyPaid,
+              isPaid: Boolean(month.isPaid) || isInvoiceFullyPaid
+            };
+          })
+      }))
+      .filter((row) => row.months.length > 0);
     setStudentLedgerRows(rows);
     setStudentLedgerLoading(false);
   }
@@ -699,7 +743,16 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
     if (!student?.id) {
       return;
     }
+    if (!month.invoiceId) {
+      toast.error("This month does not have a generated invoice for this student.");
+      return;
+    }
+    if (month.isInvoiceFullyPaid && !month.paidOn) {
+      toast.info(`${month.label} invoice is already fully paid.`);
+      return;
+    }
 
+    const nextPaid = !month.isPaid;
     const checkboxKey = `${row.feeStructureId}-${month.monthNumber}`;
     setStudentLedgerUpdatingKey(checkboxKey);
 
@@ -711,7 +764,7 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
         feeStructureId: row.feeStructureId,
         monthNumber: month.monthNumber,
         year: Number(studentLedgerYear),
-        isPaid: !month.isPaid
+        isPaid: nextPaid
       })
     });
     const result = await response.json().catch(() => ({}));
@@ -726,6 +779,11 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
       loadStudentLedger(student, Number(studentLedgerYear)).catch((error) => toast.error(error.message)),
       loadFeeData(student.id).catch((error) => toast.error(error.message))
     ]);
+    toast.success(
+      nextPaid
+        ? `${month.label} monthly invoice settled.`
+        : `${month.label} monthly settlement removed.`
+    );
     setStudentLedgerUpdatingKey("");
   }
 
@@ -759,6 +817,7 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
       setSubmittingInvoice(false);
       setSubmittingPayment(false);
       setActiveTab("info");
+      setActiveBillingForm("");
       setReceiptDialogOpen(false);
       setReceiptLoading(false);
       setReceiptData(null);
@@ -850,7 +909,14 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
     setPayments((current) => [result.data.payment, ...current]);
     setPaymentForm((current) => ({
       ...paymentDefaults,
-      feeInvoiceId: current.feeInvoiceId
+      feeInvoiceId:
+        Number(result.data.invoice.balance || 0) > 0
+          ? result.data.invoice.id
+          : invoices.find(
+              (invoice) =>
+                invoice.id !== result.data.invoice.id &&
+                Number(invoice.balance || 0) > 0
+            )?.id || ""
     }));
     setActiveTab("payments");
     toast.success("Payment recorded.");
@@ -938,200 +1004,305 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl p-4 sm:p-5">
-        <DialogHeader className="pr-8">
-          <DialogTitle>Student Fees</DialogTitle>
-          <DialogDescription>
-            {student ? `${student.firstName} ${student.lastName || ""} • ${student.admissionNumber}` : "Manage student invoices and payments."}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-6xl max-h-[calc(100vh-1rem)] grid-rows-[auto_auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
+        <div className="border-b border-slate-100 bg-linear-to-br from-sky-50 via-white to-slate-50 px-4 py-5 sm:px-6">
+          <DialogHeader className="pr-8">
+            <DialogTitle className="text-xl text-slate-950">Student Fees</DialogTitle>
+            <DialogDescription>
+              {student ? `${getStudentName(student)} • ${student.admissionNumber || "NA"} • ${getClassLabel(student)}` : "Manage student invoices and payments."}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="grid grid-cols-3 gap-2">
-          <Card>
-            <CardContent className="p-3">
-              <p className="text-xs text-muted-foreground">Assigned</p>
-              <p className="text-lg font-semibold">{formatCurrency(totals.totalAssigned)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3">
-              <p className="text-xs text-muted-foreground">Paid</p>
-              <p className="text-lg font-semibold">{formatCurrency(totals.totalPaid)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-3">
-              <p className="text-xs text-muted-foreground">Balance</p>
-              <p className="text-lg font-semibold">{formatCurrency(totals.totalBalance)}</p>
-            </CardContent>
-          </Card>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {[
+              { icon: FileText, label: "Assigned", value: totals.totalAssigned, tone: "text-slate-950", iconTone: "text-sky-600" },
+              { icon: Wallet, label: "Paid", value: totals.totalPaid, tone: "text-emerald-700", iconTone: "text-emerald-600" },
+              { icon: IndianRupee, label: "Balance", value: totals.totalBalance, tone: totals.totalBalance > 0 ? "text-red-700" : "text-emerald-700", iconTone: totals.totalBalance > 0 ? "text-red-600" : "text-emerald-600" }
+            ].map(({ icon: Icon, iconTone, label, value, tone }) => (
+              <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm" key={label}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-medium uppercase text-slate-500">{label}</p>
+                  <Icon className={cn("h-4 w-4", iconTone)} />
+                </div>
+                <p className={cn("mt-2 text-2xl font-semibold tracking-tight", tone)}>
+                  {formatCurrency(value)}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {tabs.map((tab) => (
-            <Button
-              className="min-w-24"
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              type="button"
-              variant={activeTab === tab.id ? "default" : "outline"}
-            >
-              {tab.label}
-            </Button>
-          ))}
-          <Input
-            className="w-[170px]"
-            onChange={(event) => setReceiptCutoffDate(event.target.value)}
-            type="date"
-            value={receiptCutoffDate}
-          />
-          <Button onClick={openReceiptPreview} type="button" variant="outline">
-            <Printer className="h-4 w-4" />
-            Receipt
-          </Button>
-          <Button disabled={settlingTillDate} onClick={settleTillCutoffDate} type="button" variant="outline">
-            {settlingTillDate ? "Settling..." : "Settle Till Date"}
-          </Button>
+        <div className="border-b border-slate-100 bg-white px-4 py-3 sm:px-6">
+          <div className="flex justify-center overflow-x-auto">
+          <div className="inline-flex min-w-max rounded-xl bg-slate-100 p-1">
+            {tabs.map((tab) => (
+              <button
+                className={cn(
+                  "rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition sm:px-4",
+                  activeTab === tab.id && "bg-white text-sky-700 shadow-sm"
+                )}
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                type="button"
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          </div>
         </div>
 
-        <div className="max-h-[60vh] overflow-y-auto rounded-md border p-3">
+        <div className="grid min-h-0 gap-0 overflow-y-auto bg-slate-50 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="min-w-0 p-4 pb-8 sm:p-6 sm:pb-10">
           {activeTab === "info" ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Card>
-                <CardHeader className="p-4 pb-2">
-                  <CardTitle className="text-sm">Student</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-1 p-4 pt-0 text-sm">
-                  <p><span className="text-muted-foreground">Name:</span> {student ? `${student.firstName} ${student.lastName || ""}` : "NA"}</p>
-                  <p><span className="text-muted-foreground">Admission:</span> {student?.admissionNumber || "NA"}</p>
-                  <p><span className="text-muted-foreground">Class:</span> {student?.className || "Unassigned"}</p>
-                  <p><span className="text-muted-foreground">Category:</span> {student?.category || "NA"}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="p-4 pb-2">
-                  <CardTitle className="text-sm">Fee Snapshot</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-1 p-4 pt-0 text-sm">
-                  <p><span className="text-muted-foreground">Invoices:</span> {invoices.length}</p>
-                  <p><span className="text-muted-foreground">Payments:</span> {payments.length}</p>
-                  <p><span className="text-muted-foreground">Latest Invoice:</span> {invoices[0]?.title || "NA"}</p>
-                  <p><span className="text-muted-foreground">Latest Payment:</span> {payments[0] ? formatDate(payments[0].paymentDate) : "NA"}</p>
-                </CardContent>
-              </Card>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <section className="rounded-2xl bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-slate-950">Student</h3>
+                <dl className="mt-4 grid gap-3 text-sm">
+                  {[
+                    ["Name", student ? getStudentName(student) : "NA"],
+                    ["Admission", student?.admissionNumber || "NA"],
+                    ["Class", getClassLabel(student)],
+                    ["Category", student?.category || "NA"]
+                  ].map(([label, value]) => (
+                    <div className="flex items-center justify-between gap-4" key={label}>
+                      <dt className="text-slate-500">{label}</dt>
+                      <dd className="text-right font-medium text-slate-950">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+              <section className="rounded-2xl bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-slate-950">Fee Snapshot</h3>
+                <dl className="mt-4 grid gap-3 text-sm">
+                  {[
+                    ["Invoices", invoices.length],
+                    ["Payments", payments.length],
+                    ["Latest Invoice", invoices[0]?.title || "NA"],
+                    ["Latest Payment", payments[0] ? formatDate(payments[0].paymentDate) : "NA"]
+                  ].map(([label, value]) => (
+                    <div className="flex items-center justify-between gap-4" key={label}>
+                      <dt className="text-slate-500">{label}</dt>
+                      <dd className="max-w-[12rem] truncate text-right font-medium text-slate-950">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
             </div>
           ) : null}
 
           {activeTab === "invoices" ? (
-            <div className="space-y-3">
+            <div>
               {loading ? (
                 <p className="text-sm text-muted-foreground">Loading invoices...</p>
               ) : invoices.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No invoices found for this student.</p>
+                <DialogEmptyState
+                  description="Create an invoice from Billing Actions to start tracking fees for this student."
+                  icon={FileText}
+                  title="No invoices found"
+                />
               ) : (
-                invoices.map((invoice) => (
-                  <div className="rounded-md border p-3" key={invoice.id}>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <p className="font-medium">{getInvoiceDisplayTitle(invoice)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {invoice.receiptNumber || "NA"} • Due {formatDate(invoice.dueDate)}
-                        </p>
-                      </div>
-                      <StatusBadge status={invoice.status} />
-                    </div>
-                    <div className="mt-2 grid gap-1 text-sm sm:grid-cols-3">
-                      <div>Net: {formatCurrency(invoice.netAmount)}</div>
-                      <div>Paid: {formatCurrency(invoice.totalPaid)}</div>
-                      <div>Balance: {formatCurrency(invoice.balance)}</div>
-                    </div>
-                  </div>
-                ))
+                <div className="overflow-x-auto rounded-2xl bg-white shadow-sm">
+                  <Table className="min-w-[760px]">
+                    <TableHeader>
+                      <TableRow className="bg-muted/40 hover:bg-muted/40">
+                        <TableHead>Invoice</TableHead>
+                        <TableHead>Receipt</TableHead>
+                        <TableHead>Due</TableHead>
+                        <TableHead className="text-right">Net</TableHead>
+                        <TableHead className="text-right">Paid</TableHead>
+                        <TableHead className="text-right">Balance</TableHead>
+                        <TableHead className="text-right">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {invoices.map((invoice) => (
+                        <TableRow key={invoice.id}>
+                          <TableCell className="max-w-[13rem] truncate py-3 font-medium">
+                            {getInvoiceDisplayTitle(invoice)}
+                          </TableCell>
+                          <TableCell className="py-3 text-muted-foreground">
+                            {invoice.receiptNumber || "NA"}
+                          </TableCell>
+                          <TableCell className="py-3 text-muted-foreground">
+                            {formatDate(invoice.dueDate)}
+                          </TableCell>
+                          <TableCell className="py-3 text-right">
+                            {formatCurrency(invoice.netAmount)}
+                          </TableCell>
+                          <TableCell className="py-3 text-right">
+                            {formatCurrency(invoice.totalPaid)}
+                          </TableCell>
+                          <TableCell className="py-3 text-right font-medium">
+                            {formatCurrency(invoice.balance)}
+                          </TableCell>
+                          <TableCell className="py-3 text-right">
+                            <StatusBadge status={invoice.status} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </div>
           ) : null}
 
           {activeTab === "payments" ? (
-            <div className="space-y-3">
+            <div>
               {loading ? (
                 <p className="text-sm text-muted-foreground">Loading payments...</p>
               ) : payments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No payments recorded for this student.</p>
+                <DialogEmptyState
+                  description="Recorded payments will appear here with date, method, and remarks."
+                  icon={Wallet}
+                  title="No payments recorded"
+                />
               ) : (
-                payments.map((payment) => (
-                  <div className="rounded-md border p-3" key={payment.id}>
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="font-medium">{formatCurrency(payment.amount)}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {payment.paymentMethod || "CASH"} • {formatDate(payment.paymentDate)}
-                        </p>
-                        {payment.remarks ? <p className="mt-1 text-xs text-muted-foreground">{payment.remarks}</p> : null}
-                      </div>
-                    </div>
-                  </div>
-                ))
+                <div className="overflow-x-auto rounded-2xl bg-white shadow-sm">
+                  <Table className="min-w-[640px]">
+                    <TableHeader>
+                      <TableRow className="bg-muted/40 hover:bg-muted/40">
+                        <TableHead>Payment</TableHead>
+                        <TableHead>Method</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Remarks</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {payments.map((payment) => (
+                        <TableRow key={payment.id}>
+                          <TableCell className="py-3 font-semibold text-emerald-700">
+                            {formatCurrency(payment.amount)}
+                          </TableCell>
+                          <TableCell className="py-3 text-muted-foreground">
+                            {payment.paymentMethod || "CASH"}
+                          </TableCell>
+                          <TableCell className="py-3 text-muted-foreground">
+                            {formatDate(payment.paymentDate)}
+                          </TableCell>
+                          <TableCell className="max-w-[18rem] truncate py-3 text-muted-foreground">
+                            {payment.remarks || "NA"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </div>
           ) : null}
 
           {activeTab === "actions" ? (
             <div className="grid gap-4">
-              <Card>
-                <CardHeader className="p-4 pb-2">
-                  <CardTitle className="text-sm">Create Invoice</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <form className="space-y-3" onSubmit={handleInvoiceSubmit}>
-                    <Input name="title" onChange={updateInvoiceForm} placeholder="Invoice title" required value={invoiceForm.title} />
-                    <Input min="1" name="grossAmount" onChange={updateInvoiceForm} placeholder="Gross amount" required type="number" value={invoiceForm.grossAmount} />
-                    <Input min="0" name="discountAmount" onChange={updateInvoiceForm} placeholder="Discount" type="number" value={invoiceForm.discountAmount} />
-                    <Input name="dueDate" onChange={updateInvoiceForm} type="date" value={invoiceForm.dueDate} />
-                    <Textarea name="notes" onChange={updateInvoiceForm} placeholder="Notes" rows="2" value={invoiceForm.notes} />
-                    <Button className="w-full" disabled={submittingInvoice || loading} type="submit">
-                      {submittingInvoice ? "Saving..." : "Create Invoice"}
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  className={cn(
+                    "rounded-2xl bg-white p-4 text-left shadow-sm transition hover:bg-sky-50",
+                    activeBillingForm === "invoice" && "ring-2 ring-sky-200"
+                  )}
+                  onClick={() => setActiveBillingForm((current) => (current === "invoice" ? "" : "invoice"))}
+                  type="button"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">Create Invoice</p>
+                      <p className="mt-1 text-xs text-slate-500">Add a new fee charge.</p>
+                    </div>
+                    <FileText className="h-5 w-5 text-sky-600" />
+                  </div>
+                </button>
+                <button
+                  className={cn(
+                    "rounded-2xl bg-white p-4 text-left shadow-sm transition hover:bg-emerald-50",
+                    activeBillingForm === "payment" && "ring-2 ring-emerald-200"
+                  )}
+                  onClick={() => setActiveBillingForm((current) => (current === "payment" ? "" : "payment"))}
+                  type="button"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">Record Payment</p>
+                      <p className="mt-1 text-xs text-slate-500">Capture amount received.</p>
+                    </div>
+                    <Wallet className="h-5 w-5 text-emerald-600" />
+                  </div>
+                </button>
+              </div>
 
-              <Card>
-                <CardHeader className="p-4 pb-2">
-                  <CardTitle className="text-sm">Record Payment</CardTitle>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <form className="space-y-3" onSubmit={handlePaymentSubmit}>
-                    <Select name="feeInvoiceId" onChange={updatePaymentForm} required value={paymentForm.feeInvoiceId}>
-                      <option value="">Select invoice</option>
-                      {invoices.map((invoice) => (
-                        <option key={invoice.id} value={invoice.id}>
-                          {getInvoiceDisplayTitle(invoice)} • {formatCurrency(invoice.balance)}
-                        </option>
-                      ))}
-                    </Select>
-                    <Input min="1" name="amount" onChange={updatePaymentForm} placeholder="Payment amount" required type="number" value={paymentForm.amount} />
-                    <Input name="paymentDate" onChange={updatePaymentForm} type="date" value={paymentForm.paymentDate} />
-                    <Select name="paymentMethod" onChange={updatePaymentForm} value={paymentForm.paymentMethod}>
-                      <option value="CASH">Cash</option>
-                      <option value="ONLINE">Online</option>
-                      <option value="BANK_TRANSFER">Bank Transfer</option>
-                      <option value="CHEQUE">Cheque</option>
-                    </Select>
-                    <Textarea name="remarks" onChange={updatePaymentForm} placeholder="Remarks" rows="2" value={paymentForm.remarks} />
-                    <Button className="w-full" disabled={submittingPayment || loading || invoices.length === 0} type="submit">
-                      {submittingPayment ? "Saving..." : "Record Payment"}
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
+              {activeBillingForm === "invoice" ? (
+                <Card className="border-0 bg-white shadow-sm">
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-sm">Create Invoice</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0">
+                    <form className="grid gap-3 sm:grid-cols-2" onSubmit={handleInvoiceSubmit}>
+                      <Input className="sm:col-span-2" name="title" onChange={updateInvoiceForm} placeholder="Invoice title" required value={invoiceForm.title} />
+                      <Input min="1" name="grossAmount" onChange={updateInvoiceForm} placeholder="Gross amount" required type="number" value={invoiceForm.grossAmount} />
+                      <Input min="0" name="discountAmount" onChange={updateInvoiceForm} placeholder="Discount" type="number" value={invoiceForm.discountAmount} />
+                      <Input name="dueDate" onChange={updateInvoiceForm} type="date" value={invoiceForm.dueDate} />
+                      <Textarea className="sm:col-span-2" name="notes" onChange={updateInvoiceForm} placeholder="Notes" rows="2" value={invoiceForm.notes} />
+                      <Button className="sm:col-span-2 sm:justify-self-end" disabled={submittingInvoice || loading} type="submit">
+                        {submittingInvoice ? "Saving..." : "Create Invoice"}
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+              ) : null}
 
-              <Card>
+              {activeBillingForm === "payment" ? (
+                <Card className="border-0 bg-white shadow-sm">
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-sm">Record Payment</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0">
+                    <form className="grid gap-3 sm:grid-cols-2" onSubmit={handlePaymentSubmit}>
+                      <div className="sm:col-span-2">
+                        <Select
+                          disabled={payableInvoices.length === 0}
+                          name="feeInvoiceId"
+                          onChange={updatePaymentForm}
+                          required
+                          value={paymentForm.feeInvoiceId}
+                        >
+                          <option value="">
+                            {payableInvoices.length === 0 ? "No pending invoices" : "Select invoice"}
+                          </option>
+                          {payableInvoices.map((invoice) => (
+                            <option key={invoice.id} value={invoice.id}>
+                              {getInvoiceDisplayTitle(invoice)} • {formatCurrency(invoice.balance)}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                      <Input min="1" name="amount" onChange={updatePaymentForm} placeholder="Payment amount" required type="number" value={paymentForm.amount} />
+                      <Input name="paymentDate" onChange={updatePaymentForm} type="date" value={paymentForm.paymentDate} />
+                      <Select name="paymentMethod" onChange={updatePaymentForm} value={paymentForm.paymentMethod}>
+                        <option value="CASH">Cash</option>
+                        <option value="ONLINE">Online</option>
+                        <option value="BANK_TRANSFER">Bank Transfer</option>
+                        <option value="CHEQUE">Cheque</option>
+                      </Select>
+                      <Textarea className="sm:col-span-2" name="remarks" onChange={updatePaymentForm} placeholder="Remarks" rows="2" value={paymentForm.remarks} />
+                      <Button className="sm:col-span-2 sm:justify-self-end" disabled={submittingPayment || loading || payableInvoices.length === 0} type="submit">
+                        {submittingPayment ? "Saving..." : "Record Payment"}
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              <Card className="border-0 bg-white shadow-sm">
                 <CardHeader className="p-4 pb-2">
-                  <CardTitle className="text-sm">Monthly Fee Ledger</CardTitle>
+                  <CardTitle className="text-sm">Monthly Invoice Settlement</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Check only the generated monthly invoices that apply to this student to settle that month&apos;s fee.
+                  </p>
                 </CardHeader>
                 <CardContent className="space-y-3 p-4 pt-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <Input
+                      className="sm:max-w-40"
                       min="2020"
                       onChange={(event) => setStudentLedgerYear(event.target.value || String(new Date().getFullYear()))}
                       type="number"
@@ -1151,31 +1322,53 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
                   {studentLedgerLoading ? (
                     <p className="text-sm text-muted-foreground">Loading monthly ledger...</p>
                   ) : studentLedgerRows.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No monthly fee structures found for this student.</p>
+                    <DialogEmptyState
+                      description="Generated monthly invoices for the selected session year will appear here for settlement."
+                      icon={CalendarDays}
+                      title="No generated monthly invoices"
+                    />
                   ) : (
                     <div className="space-y-3">
                       {studentLedgerRows.map((row) => {
                         const summary = getMonthlyLedgerRowSummary(row);
                         return (
-                          <div className="rounded-md border p-3" key={`${row.studentId}-${row.feeStructureId}`}>
-                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                              <div className="font-medium">{row.feeName}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {summary.paidMonths} paid • {summary.dueMonths} due
+                          <div className="rounded-2xl bg-slate-50 p-4" key={`${row.studentId}-${row.feeStructureId}`}>
+                            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="font-semibold text-slate-950">{row.feeName}</div>
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {row.academicYear || `Session ${row.ledgerYear}`} • {formatCurrency(row.monthlyAmount)} per month
+                                </div>
+                              </div>
+                              <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-xs">
+                                {summary.paidMonths} settled • {summary.dueMonths} pending
                               </div>
                             </div>
-                            <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                            <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
                               {row.months.map((month) => {
                                 const checkboxKey = `${row.feeStructureId}-${month.monthNumber}`;
+                                const isUpdating = studentLedgerUpdatingKey === checkboxKey;
+                                const isExternallyPaid = month.isInvoiceFullyPaid && !month.paidOn;
                                 return (
                                   <label
-                                    className={`flex cursor-pointer items-center justify-between rounded-md border px-2 py-1 text-xs ${month.isPaid ? "border-emerald-600 bg-emerald-50" : "border-border"}`}
+                                    className={cn(
+                                      "flex cursor-pointer items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-xs shadow-xs transition",
+                                      month.isPaid
+                                        ? "text-emerald-700 ring-1 ring-emerald-100"
+                                        : "text-slate-600 hover:bg-sky-50",
+                                      isUpdating && "opacity-60"
+                                    )}
                                     key={`${row.feeStructureId}-${month.monthNumber}`}
                                   >
-                                    <span>{month.label}</span>
+                                    <span className="min-w-0">
+                                      <span className="block truncate font-medium">{month.label}</span>
+                                      <span className="text-[11px] text-muted-foreground">
+                                        {isExternallyPaid ? "Already paid" : month.isPaid ? "Paid" : "Settle"}
+                                      </span>
+                                    </span>
                                     <input
                                       checked={month.isPaid}
-                                      disabled={studentLedgerUpdatingKey === checkboxKey}
+                                      disabled={isExternallyPaid || studentLedgerUpdatingKey === checkboxKey}
                                       onChange={() => toggleStudentLedgerMonth(row, month)}
                                       type="checkbox"
                                     />
@@ -1192,6 +1385,66 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
               </Card>
             </div>
           ) : null}
+          </div>
+
+          <aside className="border-t border-slate-100 bg-white p-4 lg:sticky lg:top-0 lg:self-start lg:border-l lg:border-t-0">
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-semibold uppercase text-slate-400">Action Rail</p>
+                <h3 className="mt-1 text-sm font-semibold text-slate-950">Receipt Controls</h3>
+              </div>
+
+              <div className="rounded-2xl bg-sky-50/70 p-4">
+                <label className="text-xs font-medium text-slate-500" htmlFor="receipt-cutoff-date">
+                  Cutoff Date
+                </label>
+                <div className="mt-2 flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-sky-600" />
+                  <Input
+                    className="h-9 bg-white"
+                    id="receipt-cutoff-date"
+                    onChange={(event) => setReceiptCutoffDate(event.target.value)}
+                    type="date"
+                    value={receiptCutoffDate}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+                <p className="text-xs font-medium text-red-500">Outstanding</p>
+                <p className="mt-1 text-2xl font-semibold tracking-tight text-red-700">
+                  {formatCurrency(totals.totalBalance)}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  {invoices.length} invoices and {payments.length} payments recorded.
+                </p>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                <Button className="justify-start gap-2" onClick={openReceiptPreview} type="button" variant="outline">
+                  <Printer className="h-4 w-4" />
+                  Preview Receipt
+                </Button>
+                <Button
+                  className="justify-start gap-2"
+                  disabled={settlingTillDate}
+                  onClick={settleTillCutoffDate}
+                  type="button"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  {settlingTillDate ? "Settling..." : "Settle Till Date"}
+                </Button>
+                <Button
+                  className="justify-start sm:col-span-2 lg:col-span-1"
+                  onClick={() => setActiveTab("actions")}
+                  type="button"
+                  variant={activeTab === "actions" ? "default" : "outline"}
+                >
+                  Open Billing Actions
+                </Button>
+              </div>
+            </div>
+          </aside>
         </div>
 
         <Dialog

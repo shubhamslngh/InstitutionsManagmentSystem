@@ -13,7 +13,7 @@ function DialogPortal(props) {
 }
 
 function DialogOverlay({ className, ...props }) {
-  return <DialogPrimitive.Overlay className={cn("fixed inset-0 z-50 bg-slate-950/40", className)} {...props} />;
+  return <DialogPrimitive.Overlay className={cn("fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-[2px] data-[state=open]:animate-overlay-in data-[state=closed]:animate-overlay-out", className)} {...props} />;
 }
 
 function DialogContent({ className, children, ...props }) {
@@ -22,7 +22,7 @@ function DialogContent({ className, children, ...props }) {
       <DialogOverlay />
       <DialogPrimitive.Content
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-1rem)] max-w-2xl max-h-[calc(100vh-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-md border bg-card p-4 shadow-lg sm:w-[calc(100%-2rem)] sm:p-6",
+          "fixed left-1/2 top-1/2 z-50 grid w-[calc(100%-1rem)] max-w-2xl max-h-[calc(100vh-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-md border bg-card p-4 shadow-2xl will-change-transform data-[state=open]:animate-dialog-in data-[state=closed]:animate-dialog-out sm:w-[calc(100%-2rem)] sm:p-6",
           className
         )}
         {...props}

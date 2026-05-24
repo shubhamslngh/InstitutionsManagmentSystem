@@ -6,7 +6,13 @@ import { Badge } from "./ui/badge.js";
 import { Button } from "./ui/button.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card.js";
 import { Input } from "./ui/input.js";
-import { Select } from "./ui/select.js";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select.js";
 import { Table } from "./ui/table.js";
 
 const initialForm = {
@@ -147,13 +153,24 @@ export default function ClassManager({
           <form className="form-grid" onSubmit={handleSubmit}>
             <label className="field">
               <span>Institution</span>
-              <Select name="institutionId" value={form.institutionId} onChange={updateField}>
-                {institutions.map((institution) => (
-                  <option key={institution.id} value={institution.id}>
-                    {institution.name}
-                  </option>
-                ))}
-              </Select>
+                  <Select
+                    value={currentInstitutionId || "all"}
+                    onValueChange={(value) => handleInstitutionChange(value === "all" ? "" : value)}
+                  >
+                    <SelectTrigger className="h-12 rounded-2xl border-slate-200 bg-white px-4 shadow-sm hover:bg-slate-50 focus:ring-4 focus:ring-blue-100">
+                      <SelectValue placeholder="Select institution" />
+                    </SelectTrigger>
+
+                    <SelectContent className="rounded-2xl border-slate-200 bg-white shadow-xl">
+                      <SelectItem value="all">All Institutions</SelectItem>
+
+                      {institutions.map((institution) => (
+                        <SelectItem key={institution.id} value={String(institution.id)}>
+                          {institution.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
             </label>
             <label className="field">
               <span>Class Name</span>
@@ -201,18 +218,29 @@ export default function ClassManager({
         </CardHeader>
         <CardContent>
         <div className="toolbar">
-          <Select
-            className="filter-input"
-            onChange={(event) => setInstitutionFilter(event.target.value)}
-            value={institutionFilter}
-          >
-            <option value="ALL">All institutions</option>
-            {institutions.map((institution) => (
-              <option key={institution.id} value={institution.id}>
-                {institution.name}
-              </option>
-            ))}
-          </Select>
+            <Select
+              value={String(form.institutionId || "")}
+              onValueChange={(value) =>
+                updateField({
+                  target: {
+                    name: "institutionId",
+                    value,
+                  },
+                })
+              }
+            >
+              <SelectTrigger className="h-12 rounded-2xl border-slate-200 bg-white px-4 shadow-sm hover:bg-slate-50 focus:ring-4 focus:ring-blue-100">
+                <SelectValue placeholder="Select institution" />
+              </SelectTrigger>
+
+              <SelectContent className="rounded-2xl border-slate-200 bg-white shadow-xl">
+                {institutions.map((institution) => (
+                  <SelectItem key={institution.id} value={String(institution.id)}>
+                    {institution.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           <span className="stat-pill">{filteredClasses.length} classes</span>
         </div>
         {filteredClasses.length === 0 ? (

@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Plus, School2, Users } from "lucide-react";
+import { ArrowRight, School2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button.js";
+import { AnimatedAddButton } from "../ui/animated-add-button.js";
 import { Badge } from "../ui/badge.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card.js";
 import { Select } from "../ui/select.js";
@@ -13,6 +14,7 @@ import { EmptyState } from "./empty-state.js";
 import { MetricCard } from "./metric-card.js";
 import { ClassFormDialog } from "../forms/class-form-dialog.js";
 import { can } from "../../lib/permissions.js";
+import { cn } from "../../lib/utils.js";
 
 function getAcademicYearStart(academicYear) {
   const match = String(academicYear || "").match(/^(\d{4})/);
@@ -50,8 +52,13 @@ export function ClassesPageClient({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState(null);
   const [institutionFilter, setInstitutionFilter] = useState(defaultInstitutionId);
+  const [hoveredCardAction, setHoveredCardAction] = useState({});
   const canManageClasses = can(currentUser, "classes.manage");
   const canManageStudents = can(currentUser, "students.manage");
+
+  useEffect(() => {
+    setClassRows(classes);
+  }, [classes]);
 
   useEffect(() => {
     setInstitutionFilter(defaultInstitutionId);
@@ -132,7 +139,7 @@ export function ClassesPageClient({
     <div className="space-y-6">
       <div className="grid gap-6 md:grid-cols-3">
         <MetricCard icon={School2} label="Total Classes" value={classRows.length} />
-        <MetricCard label="Institutions" value={institutions.length} tone="success" />
+        {/* <MetricCard label="Institutions" value={institutions.length} tone="success" /> */}
         <MetricCard
           label="Sections"
           value={classRows.filter((item) => item.section).length}
@@ -151,10 +158,9 @@ export function ClassesPageClient({
           </Select>
         </div>
         {canManageClasses ? (
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
+          <AnimatedAddButton onClick={() => setDialogOpen(true)}>
             Add Class
-          </Button>
+          </AnimatedAddButton>
         ) : null}
       </div>
       <Card>
@@ -170,10 +176,9 @@ export function ClassesPageClient({
               description="Create academic classes for institutions so students and fee structures can be organized correctly."
               action={
                 canManageClasses ? (
-                  <Button onClick={() => setDialogOpen(true)}>
-                    <Plus className="h-4 w-4" />
+                  <AnimatedAddButton onClick={() => setDialogOpen(true)}>
                     Add Class
-                  </Button>
+                  </AnimatedAddButton>
                 ) : null
               }
             />
@@ -191,71 +196,95 @@ export function ClassesPageClient({
                     <Badge variant="outline">{academicClasses.length} classes</Badge>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {academicClasses.map((item) => (
-                      <Card className="border-slate-200/80 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md" key={item.id}>
-                        <CardHeader className="space-y-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1">
-                              <CardTitle className="text-base">
-                                {item.name}
-                                {item.section ? <span className="ml-2 align-middle text-sm font-medium text-muted-foreground">- {item.section}</span> : null}
-                              </CardTitle>
-                              <CardDescription>{item.institutionName}</CardDescription>
-                            </div>
-                            <Badge variant="secondary">{item.capacity || "NA"} seats</Badge>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="outline">{item.academicYear || "Academic year NA"}</Badge>
-                            {item.section ? <Badge variant="secondary">{item.section}</Badge> : null}
-                          </div>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div className="grid grid-cols-2 gap-3 text-sm">
-                            <div className="rounded-lg bg-muted/40 p-3">
-                              <p className="text-xs uppercase tracking-wide text-muted-foreground">Institution</p>
-                              <p className="mt-1 font-medium text-foreground">{item.institutionName}</p>
-                            </div>
-                            <div className="rounded-lg bg-muted/40 p-3">
-                              <p className="text-xs uppercase tracking-wide text-muted-foreground">Capacity</p>
-                              <p className="mt-1 font-medium text-foreground">{item.capacity || "NA"}</p>
-                            </div>
-                          </div>
+                    {academicClasses.map((item) => {
+                      const actionTone = hoveredCardAction[item.id];
 
-                          <div className="flex flex-wrap gap-2">
-                            {canManageStudents ? (
-                              <Button className="flex-1" onClick={() => enrollStudentsForClass(item)} type="button">
-                                <Users className="h-4 w-4" />
-                                Enroll Students
-                                <ArrowRight className="h-4 w-4" />
-                              </Button>
-                            ) : null}
-                            {canManageClasses ? (
-                              <Button
-                                className="flex-1"
-                                onClick={() => {
-                                  setEditingClass(item);
-                                  setDialogOpen(true);
-                                }}
-                                type="button"
-                                variant="outline"
-                              >
-                                Edit
-                              </Button>
-                            ) : null}
-                            {canManageClasses ? (
-                              <ConfirmDialog
-                                description={`Delete ${item.name}${item.section ? ` - ${item.section}` : ""}?`}
-                                onConfirm={() => handleDelete(item.id)}
-                              >
-                                <Button type="button" variant="destructive">
-                                  Delete
+                      return (
+                        <Card
+                          className={cn(
+                            "bg-linear-to-br from-white  to-blue-50 border-slate-200/80 shadow-zinc-300 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+                            actionTone === "enroll" && "border-green-500 bg-linear-to-br shadow-emerald-600 from-emerald-50 to-white",
+                            actionTone === "edit" && "border-sky-200 bg-linear-to-br shadow-zinc-600 from-sky-50 via-cyan-50 to-white",
+                            actionTone === "delete" && "border-red-200 bg-linear-to-br shadow-red-600 from-red-50 via-rose-50 to-white"
+                          )}
+                          key={item.id}
+                        >
+                          <CardHeader className="space-y-1">
+                            <div className="flex items-start place-items-end-safe gap-3">
+                              <div className="space-y-1">
+                                <CardTitle className="text-base">
+                                  {item.name}
+                                  {item.section ? <span className="ml-2 align-middle text-sm font-medium text-muted-foreground">- {item.section}</span> : null}
+                                </CardTitle>
+                              </div>
+                              <p className="text-sm font-light text-foreground">Seats:</p>
+                              <Badge variant="success">{item.capacity || "NA"} </Badge>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Badge className="font-bold" variant="warning">{item.academicYear || "Academic year NA"}</Badge>
+                              
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            <div className="grid gap-0 text-sm">
+                              <div className="rounded-md bg-mauve-50 p-1">
+                                {/* <p className="text-xs uppercase tracking-wide text-muted-foreground">Institution</p> */}
+                                <p className=" text-medium font-medium text-foreground">{item.institutionName}</p>
+                              </div>
+                              
+                            </div>
+
+                            <div className="flex flex-wrap transition-all duration-200 ease-in-out  gap-2">
+                              {canManageStudents ? (
+                                <AnimatedAddButton
+                                  className="flex-1 p-1"
+                                  lottieClassName="p-1 h-6 w-0 overflow-hidden transition-all duration-200 ease-out group-hover:w-10 group-hover:opacity-100 group-focus-visible:w-8 group-focus-visible:opacity-100"
+                                  lottieName="enroll"
+                                  onMouseEnter={() => setHoveredCardAction((current) => ({ ...current, [item.id]: "enroll" }))}
+                                  onMouseLeave={() => setHoveredCardAction((current) => ({ ...current, [item.id]: "" }))}
+                                  onClick={() => enrollStudentsForClass(item)}
+                                  type="button"
+                                  variant="AddBtn"
+                                >
+                                  Enroll Students
+                                  <ArrowRight className="h-4 w-4" />
+                                </AnimatedAddButton>
+                              ) : null}
+                              {canManageClasses ? (
+                                <Button
+                                  className="flex-1"
+                                  onMouseEnter={() => setHoveredCardAction((current) => ({ ...current, [item.id]: "edit" }))}
+                                  onMouseLeave={() => setHoveredCardAction((current) => ({ ...current, [item.id]: "" }))}
+                                  onClick={() => {
+                                    setEditingClass(item);
+                                    setDialogOpen(true);
+                                  }}
+                                  type="button"
+                                  variant="outline"
+                                >
+                                  Edit
                                 </Button>
-                              </ConfirmDialog>
-                            ) : null}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                              ) : null}
+                              {canManageClasses ? (
+                                <ConfirmDialog
+                                  description={`Delete ${item.name}${item.section ? ` - ${item.section}` : ""}?`}
+                                  onConfirm={() => handleDelete(item.id)}
+                                >
+                                  <Button
+                                    onMouseEnter={() => setHoveredCardAction((current) => ({ ...current, [item.id]: "delete" }))}
+                                    onMouseLeave={() => setHoveredCardAction((current) => ({ ...current, [item.id]: "" }))}
+                                    type="button"
+                                    variant="destructive"
+                                  >
+                                    Delete
+                                  </Button>
+                                </ConfirmDialog>
+                              ) : null}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 </section>
               ))}

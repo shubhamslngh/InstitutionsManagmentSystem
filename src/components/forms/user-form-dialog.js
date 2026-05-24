@@ -129,7 +129,7 @@ export function UserFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-sky-200 bg-gradient-to-br from-sky-50 via-amber-50 to-rose-50">
+      <DialogContent className="border-sky-200 bg-linear-to-br from-emerald-50 via-black/10 to-white">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit User" : "Add User"}</DialogTitle>
           <DialogDescription>
@@ -241,7 +241,7 @@ export function UserFormDialog({
               )}
             />
             <DialogFooter className="md:col-span-2">
-              <Button disabled={form.formState.isSubmitting} type="submit">
+              <Button variant="AddBtn" disabled={form.formState.isSubmitting} type="submit">
                 {form.formState.isSubmitting ? "Saving..." : isEditing ? "Save User" : "Create User"}
               </Button>
             </DialogFooter>

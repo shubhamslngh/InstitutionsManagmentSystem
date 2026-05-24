@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Button } from "../ui/button.js";
+import { AnimatedAddButton } from "../ui/animated-add-button.js";
 import {
   Dialog,
   DialogContent,
@@ -955,9 +956,9 @@ export function StudentFormDialog({
                           Add or adjust manual fee rows that are not linked to class fee structures.
                         </p>
                       </div>
-                      <Button onClick={addFeeItem} type="button" variant="outline">
+                      <AnimatedAddButton onClick={addFeeItem} type="button">
                         Add Custom Fee
-                      </Button>
+                      </AnimatedAddButton>
                     </div>
                     {customFeeItemEntries.length === 0 ? (
                       <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">

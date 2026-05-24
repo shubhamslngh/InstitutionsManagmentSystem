@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowUpDown, Eye, Plus, Printer, ReceiptText } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowUpDown, Eye, Printer, ReceiptText } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button.js";
+import { AnimatedAddButton } from "../ui/animated-add-button.js";
 import { MetricCard } from "./metric-card.js";
 import { DataTable } from "../tables/data-table.js";
 import { StatusBadge } from "./status-badge.js";
@@ -11,6 +12,7 @@ import { formatCurrency } from "../../lib/currency.js";
 import { formatDate } from "../../lib/dateFormat.js";
 import { InvoiceFormDialog } from "../forms/invoice-form-dialog.js";
 import { ConfirmDialog } from "./confirm-dialog.js";
+import { ReceiptPreview, getPrintableReceiptMarkup } from "./student-fees-dialog.js";
 import {
   Dialog,
   DialogContent,
@@ -21,340 +23,6 @@ import {
 } from "../ui/dialog.js";
 import { can } from "../../lib/permissions.js";
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function getStudentName(student) {
-  return `${student?.firstName || ""} ${student?.lastName || ""}`.trim() || "NA";
-}
-
-function getClassLabel(student) {
-  if (!student?.className) {
-    return "NA";
-  }
-
-  return student.section ? `${student.className} - ${student.section}` : student.className;
-}
-
-function getReceiptRows(receipt) {
-  return [
-    ["Receipt No.", receipt.invoice.receiptNumber || "NA"],
-    ["Receipt Title", receipt.invoice.title || "NA"],
-    ["Student Name", getStudentName(receipt.student)],
-    ["Admission No.", receipt.student.admissionNumber || "NA"],
-    ["Father Name", receipt.student.fatherName || "NA"],
-    ["Mother Name", receipt.student.motherName || "NA"],
-    ["Class", getClassLabel(receipt.student)],
-    ["Academic Year", receipt.academicYear || "NA"],
-    ["Due Date", formatDate(receipt.invoice.dueDate)],
-    ["Status", receipt.invoice.status || "NA"],
-    ["Gross Amount", formatCurrency(receipt.invoice.grossAmount)],
-    ["Discount", formatCurrency(receipt.invoice.discountAmount)],
-    ["Net Amount", formatCurrency(receipt.invoice.netAmount)],
-    ["Paid Amount", formatCurrency(receipt.invoice.totalPaid)],
-    ["Balance", formatCurrency(receipt.invoice.balance)]
-  ].concat(receipt.invoice.notes ? [["Notes", receipt.invoice.notes]] : []);
-}
-
-function getMonthsMarkup(receipt) {
-  if (!receipt.months?.length) {
-    return "";
-  }
-
-  return `
-    <section class="months-section">
-      <div class="section-title">Monthly Fee Status</div>
-      <div class="months-grid">
-        ${receipt.months.map((month) => `
-          <div class="month-card ${month.isCurrentInvoiceMonth ? "current" : ""}">
-            <div class="month-label">${escapeHtml(month.label)}</div>
-            ${month.isPaid ? '<div class="stamp">PAID</div>' : '<div class="stamp pending">PENDING</div>'}
-            <div class="month-note">${escapeHtml(month.paidOn ? `Paid on ${formatDate(month.paidOn)}` : "Not paid")}</div>
-          </div>
-        `).join("")}
-      </div>
-    </section>
-  `;
-}
-
-function getPrintableReceiptMarkup(receipt, copyType) {
-  const rows = getReceiptRows(receipt);
-  const copyLabel = copyType === "office" ? "Office Copy" : "Student Copy";
-
-  return `<!DOCTYPE html>
-  <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>${escapeHtml(receipt.invoice.title)} - ${escapeHtml(copyLabel)}</title>
-      <style>
-        :root {
-          color-scheme: light;
-        }
-
-        * {
-          box-sizing: border-box;
-        }
-
-        body {
-          margin: 0;
-          padding: 12px;
-          font-family: Arial, Helvetica, sans-serif;
-          color: #111827;
-          background: #ffffff;
-        }
-
-        .copy {
-          border: 1.5px solid #111827;
-          border-radius: 10px;
-          padding: 12px;
-          max-width: 210mm;
-          margin: 0 auto;
-        }
-
-        .header {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 16px;
-          margin-bottom: 10px;
-          padding-bottom: 8px;
-          border-bottom: 1px solid #d1d5db;
-        }
-
-        .title {
-          margin: 0;
-          font-size: 20px;
-          font-weight: 700;
-        }
-
-        .subtitle {
-          margin: 4px 0 0;
-          font-size: 12px;
-          color: #4b5563;
-        }
-
-        .badge {
-          padding: 6px 10px;
-          border: 1px solid #111827;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 700;
-          white-space: nowrap;
-        }
-
-        .details-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 8px;
-        }
-
-        .detail-row {
-          display: grid;
-          grid-template-columns: 120px minmax(0, 1fr);
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          overflow: hidden;
-          font-size: 12px;
-        }
-
-        .detail-label {
-          padding: 7px 8px;
-          background: #f3f4f6;
-          font-weight: 700;
-        }
-
-        .detail-value {
-          padding: 7px 8px;
-        }
-
-        .months-section {
-          margin-top: 12px;
-        }
-
-        .section-title {
-          margin-bottom: 8px;
-          font-size: 14px;
-          font-weight: 700;
-        }
-
-        .months-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 8px;
-        }
-
-        .month-card {
-          position: relative;
-          min-height: 64px;
-          padding: 8px;
-          border: 1px solid #d1d5db;
-          border-radius: 8px;
-          background: #f9fafb;
-          break-inside: avoid;
-        }
-
-        .month-card.current {
-          border-color: #2563eb;
-        }
-
-        .month-label {
-          font-size: 12px;
-          font-weight: 700;
-        }
-
-        .month-note {
-          margin-top: 20px;
-          font-size: 10px;
-          color: #4b5563;
-        }
-
-        .stamp {
-          position: absolute;
-          top: 8px;
-          right: 8px;
-          padding: 2px 6px;
-          border: 1.5px solid #b91c1c;
-          color: #b91c1c;
-          font-size: 10px;
-          font-weight: 800;
-          letter-spacing: 0.05em;
-          border-radius: 999px;
-          transform: rotate(-8deg);
-        }
-
-        .stamp.pending {
-          border-color: #6b7280;
-          color: #6b7280;
-        }
-
-        .footer {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 24px;
-          margin-top: 16px;
-        }
-
-        .signature {
-          padding-top: 18px;
-          border-top: 1px solid #111827;
-          text-align: center;
-          font-size: 12px;
-        }
-
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 8mm;
-          }
-
-          body {
-            padding: 0;
-          }
-
-          .copy {
-            border-radius: 0;
-          }
-        }
-      </style>
-    </head>
-    <body>
-      <section class="copy">
-        <div class="header">
-          <div>
-            <h1 class="title">${escapeHtml(receipt.institution.name || "Fee Receipt")}</h1>
-          <p class="subtitle">${escapeHtml(receipt.invoice.title || "Fee Receipt")}</p>
-          <p class="subtitle">Receipt No. ${escapeHtml(receipt.invoice.receiptNumber || "NA")}</p>
-        </div>
-          <div class="badge">${escapeHtml(copyLabel)}</div>
-        </div>
-
-        <section class="details-grid">
-          ${rows.map(([label, value]) => `
-            <div class="detail-row">
-              <div class="detail-label">${escapeHtml(label)}</div>
-              <div class="detail-value">${escapeHtml(value)}</div>
-            </div>
-          `).join("")}
-        </section>
-
-        ${copyType === "student" ? getMonthsMarkup(receipt) : ""}
-
-        <div class="footer">
-          <div class="signature">Student / Parent Signature</div>
-          <div class="signature">Authorized Signature</div>
-        </div>
-      </section>
-    </body>
-  </html>`;
-}
-
-function ReceiptPreview({ receipt, copyType }) {
-  if (!receipt) {
-    return null;
-  }
-
-  const rows = getReceiptRows(receipt);
-
-  return (
-    <div className="rounded-md border bg-card">
-      <div className="flex flex-col gap-3 border-b border-border p-5 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h3 className="text-xl font-semibold">{receipt.institution.name || "Fee Receipt"}</h3>
-          <p className="text-sm text-muted-foreground">{receipt.invoice.title || "Fee Receipt"}</p>
-        </div>
-        <div className="rounded-full border border-foreground px-3 py-1 text-xs font-semibold tracking-wide text-foreground">
-          {copyType === "office" ? "Office Copy" : "Student Copy"}
-        </div>
-      </div>
-
-      <div className="p-5">
-        <div className="grid gap-2 lg:grid-cols-2">
-          {rows.map(([label, value]) => (
-            <div className="grid grid-cols-[120px_minmax(0,1fr)] overflow-hidden rounded-md border" key={label}>
-              <div className="bg-muted px-3 py-2 text-sm font-medium">{label}</div>
-              <div className="px-3 py-2 text-sm">{value}</div>
-            </div>
-          ))}
-        </div>
-
-        {copyType === "student" && receipt.months?.length > 0 ? (
-          <div className="mt-6">
-            <div className="mb-3 text-sm font-semibold">Monthly Fee Status</div>
-            <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-4">
-              {receipt.months.map((month) => (
-                <div
-                  className={`relative rounded-md border p-3 ${month.isCurrentInvoiceMonth ? "border-primary" : "border-border"} bg-muted/30`}
-                  key={`${month.calendarYear}-${month.monthNumber}`}
-                >
-                  <div className="text-sm font-semibold">{month.label}</div>
-                  <div className={`absolute right-3 top-3 rounded-full border-2 px-2 py-0.5 text-[10px] font-extrabold tracking-[0.18em] rotate-[-8deg] ${month.isPaid ? "border-red-700 text-red-700" : "border-slate-500 text-slate-500"}`}>
-                    {month.isPaid ? "PAID" : "PENDING"}
-                  </div>
-                  <div className="mt-8 text-xs text-muted-foreground">
-                    {month.paidOn ? `Paid on ${formatDate(month.paidOn)}` : "Not paid"}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="mt-8 grid gap-6 sm:grid-cols-2">
-          <div className="border-t border-foreground pt-6 text-center text-sm">Student / Parent Signature</div>
-          <div className="border-t border-foreground pt-6 text-center text-sm">Authorized Signature</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function InvoicesPageClient({ initialInvoices, students, institutions, currentUser }) {
   const [invoices, setInvoices] = useState(initialInvoices);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -362,9 +30,13 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
-  const [receiptTab, setReceiptTab] = useState("student");
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState([]);
   const canManageFees = can(currentUser, "fees.manage");
+
+  useEffect(() => {
+    setInvoices(initialInvoices);
+    setSelectedInvoiceIds([]);
+  }, [initialInvoices]);
 
   const totals = useMemo(() => {
     return invoices.reduce(
@@ -445,9 +117,8 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
     setReceiptDialogOpen(true);
     setReceiptLoading(true);
     setReceiptData(null);
-    setReceiptTab("student");
 
-    const response = await fetch(`/api/fees/assignments/${invoice.id}`);
+    const response = await fetch(`/api/students/${invoice.studentId}/fees`);
     const result = await response.json().catch(() => ({}));
 
     if (!response.ok) {
@@ -456,7 +127,7 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
       return;
     }
 
-    setReceiptData(result.data);
+    setReceiptData(result.data?.consolidatedReceipt || null);
     setReceiptLoading(false);
   }
 
@@ -474,12 +145,12 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
     );
   }
 
-  function printReceipt(copyType) {
+  function printReceipt() {
     if (!receiptData) {
       return;
     }
 
-    const markup = getPrintableReceiptMarkup(receiptData, copyType);
+    const markup = getPrintableReceiptMarkup(receiptData);
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed";
     iframe.style.right = "0";
@@ -654,10 +325,9 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
 
       {canManageFees ? (
         <div className="flex justify-end">
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
+          <AnimatedAddButton onClick={() => setDialogOpen(true)}>
             Create Invoice
-          </Button>
+          </AnimatedAddButton>
         </div>
       ) : null}
 
@@ -710,7 +380,6 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
           if (!nextOpen) {
             setReceiptData(null);
             setReceiptLoading(false);
-            setReceiptTab("student");
           }
         }}
       >
@@ -718,33 +387,16 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
           <DialogHeader>
             <DialogTitle>Fee Receipt Preview</DialogTitle>
             <DialogDescription>
-              Review office and student copies before printing.
+              Review the latest combined office and student receipt before printing.
             </DialogDescription>
           </DialogHeader>
-
-          <div className="flex gap-2">
-            <Button
-              className="min-w-36"
-              onClick={() => setReceiptTab("student")}
-              variant={receiptTab === "student" ? "default" : "outline"}
-            >
-              Student Copy
-            </Button>
-            <Button
-              className="min-w-36"
-              onClick={() => setReceiptTab("office")}
-              variant={receiptTab === "office" ? "default" : "outline"}
-            >
-              Office Copy
-            </Button>
-          </div>
 
           {receiptLoading ? (
             <div className="rounded-md border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
               Loading receipt preview...
             </div>
           ) : receiptData ? (
-            <ReceiptPreview copyType={receiptTab} receipt={receiptData} />
+            <ReceiptPreview receipt={receiptData} />
           ) : (
             <div className="rounded-md border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
               Receipt preview is not available.
@@ -752,9 +404,9 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
           )}
 
           <DialogFooter>
-            <Button disabled={!receiptData || receiptLoading} onClick={() => printReceipt(receiptTab)}>
+            <Button disabled={!receiptData || receiptLoading} onClick={printReceipt}>
               <Printer className="h-4 w-4" />
-              Print {receiptTab === "student" ? "Student Copy" : "Office Copy"}
+              Print Combined Receipt
             </Button>
           </DialogFooter>
         </DialogContent>

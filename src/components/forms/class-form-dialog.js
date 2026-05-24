@@ -6,8 +6,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
-import { ArrowRight, CheckCircle2, Plus, Users } from "lucide-react";
+import { ArrowRight, Building2, CalendarDays, CheckCircle2, IndianRupee, PlusCircle, Users } from "lucide-react";
 import { Button } from "../ui/button.js";
+import { AnimatedAddButton } from "../ui/animated-add-button.js";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,7 @@ import {
 } from "../ui/form.js";
 import { Input } from "../ui/input.js";
 import { Select } from "../ui/select.js";
+import { cn } from "../../lib/utils.js";
 
 const currentAcademicYear = getCurrentAcademicYearLabel();
 
@@ -374,16 +376,33 @@ export function ClassFormDialog({
 
   function renderEditMode() {
     return (
-      <DialogContent className="max-w-6xl">
-        <DialogHeader>
-          <DialogTitle>{initialValues?.id ? "Edit Class" : "Add Class"}</DialogTitle>
-          <DialogDescription>
-            Update the class record and keep its fee structures aligned with the academic session.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-6xl max-h-[calc(100vh-1rem)] grid-rows-[auto_auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
+        <div className="border-b border-slate-100 bg-linear-to-br from-sky-50 via-white to-slate-50 px-4 py-5 sm:px-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-slate-950">{initialValues?.id ? "Edit Class" : "Add Class"}</DialogTitle>
+            <DialogDescription>
+              Update the class record and keep its fee structures aligned with the academic session.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {[
+              { icon: Building2, label: "Class", value: `${form.getValues("name") || "Class"}${form.getValues("section") ? ` - ${form.getValues("section")}` : ""}` },
+              { icon: CalendarDays, label: "Academic Year", value: form.getValues("academicYear") || currentAcademicYear },
+              { icon: IndianRupee, label: "Fee Rows", value: classFeeRows.length }
+            ].map(({ icon: Icon, label, value }) => (
+              <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm" key={label}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-medium uppercase text-slate-500">{label}</p>
+                  <Icon className="h-4 w-4 text-sky-600" />
+                </div>
+                <p className="mt-2 truncate text-lg font-semibold text-slate-950">{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
         <Form {...form}>
           <form
-            className="space-y-4"
+            className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-slate-50"
             onSubmit={form.handleSubmit(
               async (values) => {
                 const response = await fetch(initialValues?.id ? `/api/classes/${initialValues.id}` : "/api/classes", {
@@ -422,24 +441,33 @@ export function ClassFormDialog({
               }
             )}
           >
-            <div className="flex flex-wrap gap-2 rounded-lg border bg-muted/30 p-2">
+            <div className="border-b border-slate-100 bg-white px-4 py-3 sm:px-6">
+              <div className="flex justify-center overflow-x-auto">
+            <div className="inline-flex min-w-max rounded-xl bg-slate-100 p-1">
               {[
                 { id: "details", label: "Class Details" },
                 { id: "fees", label: "Fee Structures" }
               ].map((tab) => (
-                <Button
+                <button
+                  className={cn(
+                    "rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition",
+                    editTab === tab.id && "bg-white text-sky-700 shadow-sm"
+                  )}
                   key={tab.id}
                   onClick={() => setEditTab(tab.id)}
                   type="button"
-                  variant={editTab === tab.id ? "default" : "outline"}
                 >
                   {tab.label}
-                </Button>
+                </button>
               ))}
             </div>
+              </div>
+            </div>
+
+            <div className="min-h-0 overflow-y-auto p-4 sm:p-6">
 
             {editTab === "details" ? (
-            <Card>
+            <Card className="border-0 bg-white shadow-sm">
               <CardContent className="grid gap-4 p-4 md:grid-cols-2">
                 <FormField
                   control={form.control}
@@ -524,7 +552,7 @@ export function ClassFormDialog({
             ) : null}
 
             {editTab === "fees" ? (
-              <Card>
+              <Card className="border-0 bg-white shadow-sm">
                 <CardContent className="space-y-4 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="space-y-1">
@@ -533,9 +561,9 @@ export function ClassFormDialog({
                         Monthly fee structures should use the academic session window, for example Mar 26 to Feb 27.
                       </p>
                     </div>
-                    <Button onClick={addClassFeeRow} type="button" variant="outline">
+                    <AnimatedAddButton onClick={addClassFeeRow} type="button">
                       Add Fee
-                    </Button>
+                    </AnimatedAddButton>
                   </div>
 
                   <div className="space-y-3">
@@ -548,7 +576,7 @@ export function ClassFormDialog({
                     const isExpanded = expandedFeeRowIds.includes(row.id);
 
                     return (
-                      <div className="rounded-xl border bg-card p-4 shadow-sm" key={row.id}>
+                      <div className="rounded-2xl bg-slate-50 p-4" key={row.id}>
                         <button
                           className="flex w-full items-center justify-between gap-3 text-left"
                           onClick={() => toggleFeeRowExpanded(row.id)}
@@ -657,7 +685,7 @@ export function ClassFormDialog({
                   })}
                 </div>
 
-                  <label className="flex items-center gap-2 text-sm">
+                  <label className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm">
                     <input
                       checked={generateStudentInvoices}
                       onChange={(event) => setGenerateStudentInvoices(event.target.checked)}
@@ -668,15 +696,16 @@ export function ClassFormDialog({
                 </CardContent>
               </Card>
             ) : null}
+            </div>
 
-            <DialogFooter>
+            <DialogFooter className="border-t border-slate-100 bg-white px-4 py-3 sm:px-6">
               {editTab === "details" ? (
                 <Button onClick={() => setEditTab("fees")} type="button" variant="outline">
                   Next: Fee Structures
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               ) : null}
-              <Button disabled={form.formState.isSubmitting} type="submit">
+              <Button variant="AddBtn" disabled={form.formState.isSubmitting} type="submit">
                 {form.formState.isSubmitting ? "Saving..." : "Save Class"}
               </Button>
             </DialogFooter>
@@ -688,36 +717,52 @@ export function ClassFormDialog({
 
   function renderCreateWizard() {
     return (
-      <DialogContent className="max-w-5xl">
-        <DialogHeader>
-          <DialogTitle>New Class Setup</DialogTitle>
-          <DialogDescription>
-            Follow the setup flow: create the class first, then define its fee structures, and finish by enrolling students.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-5xl max-h-[calc(100vh-1rem)] grid-rows-[auto_auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
+        <div className="border-b border-slate-100 bg-linear-to-br from-sky-50 via-white to-slate-50 px-4 py-5 sm:px-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-slate-950">New Class Setup</DialogTitle>
+            <DialogDescription>
+              Create the class, define fee structures, then continue to student enrollment.
+            </DialogDescription>
+          </DialogHeader>
+        </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-md border p-3">
-            <Badge variant={wizardStep === "details" ? "default" : "secondary"}>Step 1</Badge>
-            <p className="mt-2 font-medium">Class details</p>
-            <p className="text-sm text-muted-foreground">Institution, class, section, capacity, and academic year.</p>
-          </div>
-          <div className="rounded-md border p-3">
-            <Badge variant={wizardStep === "fees" ? "default" : "outline"}>Step 2</Badge>
-            <p className="mt-2 font-medium">Fee structure setup</p>
-            <p className="text-sm text-muted-foreground">Add the fee rows for the newly created class.</p>
-          </div>
-          <div className="rounded-md border p-3">
-            <Badge variant={wizardStep === "complete" ? "default" : "outline"}>Step 3</Badge>
-            <p className="mt-2 font-medium">Finish flow</p>
-            <p className="text-sm text-muted-foreground">Close, enroll students, or add another class.</p>
+        <div className="border-b border-slate-100 bg-white px-4 py-3 sm:px-6">
+          <div className="grid gap-3 md:grid-cols-3">
+            {[
+              { id: "details", icon: Building2, label: "Class Details", hint: "Institution, class, section, year." },
+              { id: "fees", icon: IndianRupee, label: "Fee Setup", hint: "Monthly or one-time fees." },
+              { id: "complete", icon: CheckCircle2, label: "Finish", hint: "Close, enroll, or add another." }
+            ].map((step, index) => {
+              const isActive = wizardStep === step.id;
+              const Icon = step.icon;
+
+              return (
+                <div
+                  className={cn(
+                    "rounded-xl bg-slate-50 p-3 transition",
+                    isActive && "bg-sky-50 ring-1 ring-sky-200"
+                  )}
+                  key={step.id}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <Badge variant={isActive ? "default" : "secondary"}>Step {index + 1}</Badge>
+                    <Icon className={cn("h-4 w-4", isActive ? "text-sky-600" : "text-slate-400")} />
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-slate-950">{step.label}</p>
+                  <p className="text-xs text-muted-foreground">{step.hint}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
+
+        <div className="min-h-0 overflow-y-auto bg-slate-50 p-4 sm:p-6">
 
         {wizardStep === "details" ? (
           <Form {...form}>
             <form
-              className="grid gap-4 md:grid-cols-2"
+              className="rounded-2xl bg-white p-4 shadow-sm grid gap-4 md:grid-cols-2"
               onSubmit={form.handleSubmit(
                 (values) => createClass(values),
                 (error) => {
@@ -818,7 +863,7 @@ export function ClassFormDialog({
 
         {wizardStep === "fees" && createdClass ? (
           <div className="space-y-4">
-            <Card>
+            <Card className="border-0 bg-white shadow-sm">
               <CardContent className="grid gap-3 p-4 md:grid-cols-2">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Created Class</p>
@@ -838,7 +883,7 @@ export function ClassFormDialog({
               </CardContent>
             </Card>
 
-            <div className="space-y-3 rounded-md border p-3">
+            <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold">Fee Structure Setup</p>
@@ -850,14 +895,13 @@ export function ClassFormDialog({
                     {getSessionPreview(createdClass.academicYear, "3", "2")}.
                   </p>
                 </div>
-                <Button onClick={addClassFeeRow} type="button" variant="outline">
-                  <Plus className="h-4 w-4" />
+                <AnimatedAddButton onClick={addClassFeeRow} type="button">
                   Add Fee
-                </Button>
+                </AnimatedAddButton>
               </div>
 
                 {classFeeRows.map((row, index) => (
-                  <div className="rounded-xl border bg-card p-4 shadow-sm" key={row.id}>
+                  <div className="rounded-2xl bg-slate-50 p-4" key={row.id}>
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                       <div className="space-y-1 xl:col-span-2">
                         <p className="text-xs font-medium text-muted-foreground">Fee name</p>
@@ -941,8 +985,8 @@ export function ClassFormDialog({
                   </div>
                 ))}
 
-              <div className="flex items-center justify-between gap-3">
-                <label className="flex items-center gap-2 text-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <label className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm">
                   <input
                     checked={generateStudentInvoices}
                     onChange={(event) => setGenerateStudentInvoices(event.target.checked)}
@@ -959,7 +1003,7 @@ export function ClassFormDialog({
         ) : null}
 
         {wizardStep === "complete" && createdClass ? (
-          <div className="space-y-4 rounded-md border p-4">
+          <div className="space-y-4 rounded-2xl bg-white p-5 shadow-sm">
             <div className="flex items-start gap-3">
               <CheckCircle2 className="mt-1 h-5 w-5 text-emerald-600" />
               <div>
@@ -973,16 +1017,22 @@ export function ClassFormDialog({
               <Button onClick={finishAndClose} type="button" variant="outline">
                 Close
               </Button>
-              <Button onClick={finishAndEnrollStudents} type="button" variant="default">
-                <Users className="h-4 w-4" />
+              <AnimatedAddButton
+                lottieClassName=" h-6 w-0 overflow-hidden transition-all duration-200 ease-out group-hover:w-10 group-hover:opacity-100 group-focus-visible:w-8 group-focus-visible:opacity-100"
+                lottieName="enroll"
+                onClick={finishAndEnrollStudents}
+                type="button"
+                variant="default"
+              >
                 Enroll Students
-              </Button>
-              <Button onClick={finishAndAddAnotherClass} type="button" variant="outline">
+              </AnimatedAddButton>
+              <AnimatedAddButton onClick={finishAndAddAnotherClass} type="button">
                 Add Another Class
-              </Button>
+              </AnimatedAddButton>
             </div>
           </div>
         ) : null}
+        </div>
       </DialogContent>
     );
   }

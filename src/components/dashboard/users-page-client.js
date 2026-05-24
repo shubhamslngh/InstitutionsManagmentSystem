@@ -1,20 +1,23 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, ShieldCheck, UserCircle2 } from "lucide-react";
+import { ShieldCheck, UserCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button.js";
+import { AnimatedAddButton } from "../ui/animated-add-button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { MetricCard } from "./metric-card.js";
 import { ConfirmDialog } from "./confirm-dialog.js";
 import { EmptyState } from "./empty-state.js";
 import { StatusBadge } from "./status-badge.js";
 import { UserFormDialog } from "../forms/user-form-dialog.js";
+import { cn } from "../../lib/utils.js";
 
 export function UsersPageClient({ initialUsers, institutions, currentUser, initialError }) {
   const [users, setUsers] = useState(initialUsers);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [hoveredCardAction, setHoveredCardAction] = useState({});
 
   const activeUsers = useMemo(
     () => users.filter((user) => user.isActive !== false).length,
@@ -70,10 +73,9 @@ export function UsersPageClient({ initialUsers, institutions, currentUser, initi
             Manage admin accounts, institution ownership, and role-based dashboard access.
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4" />
+        <AnimatedAddButton onClick={() => setDialogOpen(true)}>
           Add User
-        </Button>
+        </AnimatedAddButton>
       </div>
 
       {initialError ? (
@@ -85,16 +87,25 @@ export function UsersPageClient({ initialUsers, institutions, currentUser, initi
           title="No users available"
           description="Create the next institution admin, accountant, or data entry user from here."
           action={
-            <Button onClick={() => setDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
+            <AnimatedAddButton onClick={() => setDialogOpen(true)}>
               Add User
-            </Button>
+            </AnimatedAddButton>
           }
         />
       ) : (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {users.map((user) => (
-            <Card className="border-sky-200 bg-gradient-to-br from-sky-50 via-amber-50 to-rose-50" key={user.id}>
+          {users.map((user) => {
+            const actionTone = hoveredCardAction[user.id];
+
+            return (
+            <Card
+              className={cn(
+                "border-slate-200 bg-linear-to-br from-emerald-50 via-teal-50 to-white transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+                actionTone === "edit" && "border-cyan-200 from-cyan-50 via-sky-50 to-white",
+                actionTone === "delete" && "border-red-200 from-red-50 via-rose-50 to-white"
+              )}
+              key={user.id}
+            >
               <CardHeader className="flex flex-row items-start justify-between gap-4">
                 <div className="space-y-2">
                   <StatusBadge status={user.role} />
@@ -117,6 +128,8 @@ export function UsersPageClient({ initialUsers, institutions, currentUser, initi
                   <Button
                     className="flex-1"
                     variant="outline"
+                    onMouseEnter={() => setHoveredCardAction((current) => ({ ...current, [user.id]: "edit" }))}
+                    onMouseLeave={() => setHoveredCardAction((current) => ({ ...current, [user.id]: "" }))}
                     onClick={() => {
                       setEditingUser(user);
                       setDialogOpen(true);
@@ -128,14 +141,21 @@ export function UsersPageClient({ initialUsers, institutions, currentUser, initi
                     description={`Delete ${user.name} from the user directory?`}
                     onConfirm={() => handleDelete(user.id)}
                   >
-                    <Button className="flex-1" disabled={currentUser?.id === user.id} variant="destructive">
+                    <Button
+                      className="flex-1"
+                      disabled={currentUser?.id === user.id}
+                      onMouseEnter={() => setHoveredCardAction((current) => ({ ...current, [user.id]: "delete" }))}
+                      onMouseLeave={() => setHoveredCardAction((current) => ({ ...current, [user.id]: "" }))}
+                      variant="destructive"
+                    >
                       Delete
                     </Button>
                   </ConfirmDialog>
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
