@@ -225,7 +225,7 @@ export function DashboardShell({ children, institutions = [], currentUser }) {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,#f8fbff,white_42%,#f8fafc)] text-slate-950">
       {routeLoadingLabel ? (
-        <div className="fixed inset-x-0 top-0 z-[70]">
+        <div className="fixed inset-x-0 top-0 z-70">
           <div className="h-1 overflow-hidden bg-blue-100">
             <div className="h-full w-1/3 animate-route-progress rounded-r-full bg-blue-600" />
           </div>
@@ -436,31 +436,108 @@ export function DashboardShell({ children, institutions = [], currentUser }) {
           )}
         >
           <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl supports-[backdrop-filter]:bg-white/70">
-            <div className="mx-auto flex w-full max-w-[1440px] items-center gap-4 px-6 py-4">
-              <Button
-                className="h-11 w-11 rounded-2xl border-slate-200 bg-white shadow-sm lg:hidden"
-                size="icon"
-                variant="outline"
-                onClick={() => setMobileOpen(true)}
-              >
-                <Menu className="h-4 w-4" />
-              </Button>
+            <div className="mx-auto w-full max-w-[1440px] px-3 py-3 sm:px-6 sm:py-4">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <Button
+                  className="h-11 w-11 rounded-2xl border-slate-200 bg-white shadow-sm lg:hidden"
+                  size="icon"
+                  variant="outline"
+                  onClick={() => setMobileOpen(true)}
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
 
-              <div className="min-w-0 flex-1 space-y-2">
-                <Breadcrumb items={breadcrumbItems} />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Breadcrumb items={breadcrumbItems} />
 
-                <h1 className="truncate text-3xl font-bold tracking-tight text-slate-950">
-                  {titleMap[pathname] || "Dashboard"}
-                </h1>
+                  <h1 className="truncate text-sm font-bold tracking-tight text-slate-950 md:text-2xl">
+                    {titleMap[pathname] || "Dashboard"}
+                  </h1>
+                </div>
+
+                {pathname !== "/institutions" ? (
+                  <div className="hidden min-w-72 xl:block">
+                    <Select
+                      value={currentInstitutionId}
+                      onValueChange={handleInstitutionChange}
+                    >
+                      <SelectTrigger className="h-12 rounded-2xl border-slate-200 bg-white px-4 shadow-sm hover:bg-slate-50">
+                        <SelectValue placeholder="All Institutions" />
+                      </SelectTrigger>
+
+                      <SelectContent className="rounded-2xl border-slate-200 bg-white shadow-xl">
+                        <SelectItem value="all">All Institutions</SelectItem>
+
+                        {institutions.map((institution) => (
+                          <SelectItem
+                            key={institution.id}
+                            value={String(institution.id)}
+                          >
+                            {institution.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="h-12 w-auto rounded-2xl border-slate-200 bg-white px-4 shadow-sm hover:bg-slate-50"
+                    >
+                      <UserCircle2 className="h-4 w-4" />
+                      <span className="hidden sm:inline">
+                        {currentUser?.name || "Account"}
+                      </span>
+                    </Button>
+                  </DropdownMenuTrigger>
+
+                  <DropdownMenuContent
+                    align="end"
+                    className="w-64 rounded-2xl border-slate-200 bg-white p-2 shadow-xl"
+                  >
+                    <DropdownMenuLabel>
+                      <div>
+                        <p className="font-bold text-slate-950">Account</p>
+                        <p className="mt-1 text-xs font-normal text-slate-500">
+                          {currentUser?.email || "No email"}
+                        </p>
+                      </div>
+                    </DropdownMenuLabel>
+
+                    <DropdownMenuSeparator />
+
+                    <DropdownMenuItem disabled className="rounded-xl">
+                      Role: {currentUser?.role || "No role"}
+                    </DropdownMenuItem>
+
+                    <DropdownMenuSeparator />
+
+                    <DropdownMenuItem
+                      className="rounded-xl text-red-600 focus:bg-red-50 focus:text-red-700"
+                      onClick={async () => {
+                        await fetch("/api/auth/logout", { method: "POST" });
+                        router.push("/login");
+                        router.refresh();
+                      }}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
 
               {pathname !== "/institutions" ? (
-                <div className="hidden min-w-72 xl:block">
+                <div className="mt-2 flex items-center gap-2 rounded-xl  p-1.5 md:hidden">
+                 
                   <Select
                     value={currentInstitutionId}
                     onValueChange={handleInstitutionChange}
                   >
-                    <SelectTrigger className="h-12 rounded-2xl border-slate-200 bg-white px-4 shadow-sm hover:bg-slate-50">
+                    <SelectTrigger className="h-9 min-w-0 flex-1 rounded-lg border-slate-200 bg-white px-3 text-sm shadow-sm hover:bg-white">
                       <SelectValue placeholder="All Institutions" />
                     </SelectTrigger>
 
@@ -479,60 +556,12 @@ export function DashboardShell({ children, institutions = [], currentUser }) {
                   </Select>
                 </div>
               ) : null}
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="h-12 rounded-2xl border-slate-200 bg-white px-4 shadow-sm hover:bg-slate-50"
-                  >
-                    <UserCircle2 className="h-4 w-4" />
-                    <span className="hidden sm:inline">
-                      {currentUser?.name || "Account"}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-
-                <DropdownMenuContent
-                  align="end"
-                  className="w-64 rounded-2xl border-slate-200 bg-white p-2 shadow-xl"
-                >
-                  <DropdownMenuLabel>
-                    <div>
-                      <p className="font-bold text-slate-950">Account</p>
-                      <p className="mt-1 text-xs font-normal text-slate-500">
-                        {currentUser?.email || "No email"}
-                      </p>
-                    </div>
-                  </DropdownMenuLabel>
-
-                  <DropdownMenuSeparator />
-
-                  <DropdownMenuItem disabled className="rounded-xl">
-                    Role: {currentUser?.role || "No role"}
-                  </DropdownMenuItem>
-
-                  <DropdownMenuSeparator />
-
-                  <DropdownMenuItem
-                    className="rounded-xl text-red-600 focus:bg-red-50 focus:text-red-700"
-                    onClick={async () => {
-                      await fetch("/api/auth/logout", { method: "POST" });
-                      router.push("/login");
-                      router.refresh();
-                    }}
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </div>
           </header>
 
           <main className="flex-1">
-            <div className="mx-auto w-full max-w-[1440px] p-6">
-              <div className="rounded-[32px] border border-slate-200/70 bg-white/70 p-6 shadow-[0_10px_50px_rgba(15,23,42,0.06)] backdrop-blur-sm">
+            <div className="mx-auto w-full max-w-[1440px] p-3 sm:p-6">
+              <div className="bg-transparent p-0 sm:rounded-[32px] sm:border sm:border-slate-200/70 sm:bg-white/70 sm:p-6 sm:shadow-[0_10px_50px_rgba(15,23,42,0.06)] sm:backdrop-blur-sm">
                 {children}
               </div>
             </div>

@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
+import { IndianRupee, Trash2, UserRound } from "lucide-react";
 import { Button } from "../ui/button.js";
 import { AnimatedAddButton } from "../ui/animated-add-button.js";
 import {
@@ -27,7 +28,9 @@ import {
 import { Input } from "../ui/input.js";
 import { Select } from "../ui/select.js";
 import { Textarea } from "../ui/textarea.js";
+import { Badge } from "../ui/badge.js";
 import { formatDateInput } from "../../lib/dateFormat.js";
+import { cn } from "../../lib/utils.js";
 
 const studentCategoryOptions = [
   "GENERAL",
@@ -257,6 +260,23 @@ function buildFeeItemFromInvoice(invoice) {
   };
 }
 
+function getFeeEditSnapshot(items, selectedIds) {
+  return JSON.stringify({
+    items: items.map((item) => ({
+      feeInvoiceId: item.feeInvoiceId || "",
+      feeStructureId: item.feeStructureId || "",
+      name: item.name || "",
+      amount: String(item.amount || ""),
+      frequency: item.frequency || "",
+      dueDate: item.dueDate || "",
+      monthNumber: String(item.monthNumber || ""),
+      ledgerYear: String(item.ledgerYear || ""),
+      notes: item.notes || ""
+    })),
+    selectedIds: [...selectedIds].sort()
+  });
+}
+
 async function parseJson(response) {
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -287,8 +307,12 @@ export function StudentFormDialog({
   const [feeItems, setFeeItems] = useState([getDefaultFeeItem("")]);
   const [classFeeStructures, setClassFeeStructures] = useState([]);
   const [loadingClassFees, setLoadingClassFees] = useState(false);
+  const [loadedClassFeesKey, setLoadedClassFeesKey] = useState("");
   const [lastAppliedClassId, setLastAppliedClassId] = useState("");
   const [selectedFeeStructureIds, setSelectedFeeStructureIds] = useState([]);
+  const [editTab, setEditTab] = useState("details");
+  const [feesDirty, setFeesDirty] = useState(false);
+  const [initialFeeSnapshot, setInitialFeeSnapshot] = useState(null);
 
   useEffect(() => {
     const nextStep = initialValues?.id ? "details" : "setup";
@@ -303,13 +327,32 @@ export function StudentFormDialog({
     setWizardStep(nextStep);
     setFeeItems([getDefaultFeeItem(initialValues?.academicYear || "")]);
     setClassFeeStructures([]);
+    setLoadedClassFeesKey("");
     setLastAppliedClassId("");
     setSelectedFeeStructureIds([]);
+    setEditTab("details");
+    setFeesDirty(false);
+    setInitialFeeSnapshot(null);
   }, [defaultInstitutionId, form, initialValues, institutions]);
 
   const selectedInstitutionId = form.watch("institutionId");
   const selectedAcademicYear = form.watch("academicYear");
   const selectedClassId = form.watch("classId");
+  const selectedClass = classes.find((item) => item.id === selectedClassId) || null;
+  const selectedClassFeesKey = selectedInstitutionId && selectedClassId
+    ? `${selectedInstitutionId}:${selectedClassId}`
+    : "";
+  const waitingForCreateFees =
+    !isEditing &&
+    wizardStep === "fees" &&
+    Boolean(selectedClassFeesKey) &&
+    loadedClassFeesKey !== selectedClassFeesKey;
+  const createSteps = [
+    { id: "setup", label: "Setup", hint: "Class" },
+    { id: "details", label: "Details", hint: "Profile" },
+    { id: "fees", label: "Fees", hint: "Confirm" }
+  ];
+  const activeCreateStepIndex = createSteps.findIndex((step) => step.id === wizardStep);
   const institutionClasses = useMemo(
     () =>
       classes.filter(
@@ -472,12 +515,17 @@ export function StudentFormDialog({
   }
 
   useEffect(() => {
-    if (!open || !selectedInstitutionId || !selectedClassId) {
+    const feePanelOpen = isEditing ? editTab === "fees" : wizardStep === "fees";
+
+    if (!open || !selectedInstitutionId || !selectedClassId || !feePanelOpen) {
       setClassFeeStructures([]);
+      setLoadedClassFeesKey("");
+      setLoadingClassFees(false);
       return;
     }
 
     let cancelled = false;
+    setLoadedClassFeesKey("");
     setLoadingClassFees(true);
 
     fetch(`/api/fees/structures?institutionId=${selectedInstitutionId}&classId=${selectedClassId}`)
@@ -493,6 +541,7 @@ export function StudentFormDialog({
 
         const nextStructures = result.data || [];
         setClassFeeStructures(nextStructures);
+        setLoadedClassFeesKey(`${selectedInstitutionId}:${selectedClassId}`);
       })
       .catch((error) => {
         if (!cancelled) {
@@ -509,10 +558,10 @@ export function StudentFormDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, selectedInstitutionId, selectedClassId]);
+  }, [editTab, isEditing, open, selectedInstitutionId, selectedClassId, wizardStep]);
 
   useEffect(() => {
-    if (!selectedClassId || selectedClassId === lastAppliedClassId) {
+    if (isEditing || !selectedClassId || selectedClassId === lastAppliedClassId) {
       return;
     }
 
@@ -522,7 +571,7 @@ export function StudentFormDialog({
 
     setFeeItems(classFeeStructures.map((structure) => buildFeeItemFromStructure(structure, selectedAcademicYear)));
     setLastAppliedClassId(selectedClassId);
-  }, [classFeeStructures, lastAppliedClassId, selectedAcademicYear, selectedClassId]);
+  }, [classFeeStructures, isEditing, lastAppliedClassId, selectedAcademicYear, selectedClassId]);
 
   useEffect(() => {
     if (isEditing || wizardStep !== "fees") {
@@ -553,13 +602,14 @@ export function StudentFormDialog({
         const editableInvoices = invoices.filter((invoice) =>
           ["PENDING", "PARTIALLY_PAID"].includes(invoice.status)
         );
-        if (editableInvoices.length > 0) {
-          const nextFeeItems = editableInvoices.map(buildFeeItemFromInvoice);
-          setFeeItems(nextFeeItems);
-          setSelectedFeeStructureIds(
-            Array.from(new Set(editableInvoices.map((invoice) => invoice.feeStructureId).filter(Boolean)))
-          );
-        }
+        const nextFeeItems = editableInvoices.map(buildFeeItemFromInvoice);
+        const nextSelectedFeeStructureIds = Array.from(
+          new Set(editableInvoices.map((invoice) => invoice.feeStructureId).filter(Boolean))
+        );
+
+        setFeeItems(nextFeeItems);
+        setSelectedFeeStructureIds(nextSelectedFeeStructureIds);
+        setInitialFeeSnapshot(getFeeEditSnapshot(nextFeeItems, nextSelectedFeeStructureIds));
       })
       .catch((error) => {
         if (!cancelled) {
@@ -572,9 +622,16 @@ export function StudentFormDialog({
     };
   }, [initialValues?.id, isEditing, open]);
 
-  async function onSubmit(values, overrideFeeItems, selectedFeeStructureIdsOverride = []) {
-    const sourceFeeItems = overrideFeeItems || feeItems;
-    const normalizedFeeItems = sourceFeeItems
+  useEffect(() => {
+    if (!isEditing || initialFeeSnapshot === null) {
+      return;
+    }
+
+    setFeesDirty(getFeeEditSnapshot(feeItems, selectedFeeStructureIds) !== initialFeeSnapshot);
+  }, [feeItems, initialFeeSnapshot, isEditing, selectedFeeStructureIds]);
+
+  function normalizeFeeItems(sourceFeeItems) {
+    return sourceFeeItems
       .map((item) => ({
         feeInvoiceId: item.feeInvoiceId || null,
         feeStructureId: item.feeStructureId || null,
@@ -587,17 +644,29 @@ export function StudentFormDialog({
         notes: item.notes.trim() || null
       }))
       .filter((item) => item.name && Number.isFinite(item.amount) && item.amount > 0);
+  }
+
+  async function onSubmit(values, overrideFeeItems, selectedFeeStructureIdsOverride) {
+    const shouldSubmitFees = !isEditing || feesDirty;
+    const normalizedFeeItems = shouldSubmitFees
+      ? normalizeFeeItems(overrideFeeItems || feeItems)
+      : undefined;
 
     const selectedClass = classes.find((item) => item.id === values.classId);
+    const payload = {
+      ...values,
+      academicYear: values.academicYear || selectedClass?.academicYear || ""
+    };
+
+    if (shouldSubmitFees) {
+      payload.feeItems = normalizedFeeItems;
+      payload.selectedFeeStructureIds = selectedFeeStructureIdsOverride || [];
+    }
+
     const response = await fetch(isEditing ? `/api/students/${initialValues.id}` : "/api/students", {
       method: isEditing ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...values,
-        academicYear: values.academicYear || selectedClass?.academicYear || "",
-        feeItems: normalizedFeeItems,
-        selectedFeeStructureIds: selectedFeeStructureIdsOverride
-      })
+      body: JSON.stringify(payload)
     });
 
     const result = await parseJson(response);
@@ -616,8 +685,13 @@ export function StudentFormDialog({
 
     const submit = form.handleSubmit(
       async (values) => {
-        if (wizardStep === "fees") {
-          if (isEditing) {
+        if (isEditing && !form.formState.isDirty && !feesDirty) {
+          onOpenChange(false);
+          return;
+        }
+
+        if (isEditing) {
+          if (feesDirty) {
             const editableFeeItems = [
               ...feeItems.filter((item) => !item.feeStructureId),
               ...selectedStructuredFeeItems
@@ -626,6 +700,11 @@ export function StudentFormDialog({
             return;
           }
 
+          await onSubmit(values);
+          return;
+        }
+
+        if (wizardStep === "fees") {
           await onSubmit(values, [], selectedFeeStructureIds);
           return;
         }
@@ -645,39 +724,104 @@ export function StudentFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl">
-        <DialogHeader>
-          <DialogTitle>{initialValues?.id ? "Edit Student" : "Add Student"}</DialogTitle>
-          <DialogDescription>
-            Capture admissions, class mapping, contact details, and fee setup in a guided flow.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-w-5xl max-h-[calc(100vh-1rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-[24px] p-0">
+        <div className="border-b border-slate-100 bg-linear-to-br from-sky-50 via-white to-slate-50 px-4 py-3.5 sm:px-6 sm:py-5">
+          <DialogHeader>
+            <DialogTitle className="pr-7 text-lg text-slate-950 sm:text-xl">
+              {isEditing
+                ? `Edit ${initialValues.firstName || "Student"}${initialValues.lastName ? ` ${initialValues.lastName}` : ""}`
+                : "Add Student"}
+            </DialogTitle>
+            {isEditing ? (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Badge className="bg-blue-50 text-blue-700 hover:bg-blue-50" variant="secondary">
+                  {initialValues.admissionNumber || "Admission not set"}
+                </Badge>
+                <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50" variant="secondary">
+                  {initialValues.academicYear || selectedClass?.academicYear || "AY not set"}
+                </Badge>
+                <DialogDescription className="text-xs sm:text-sm">
+                  Update profile or fee assignments, then save once.
+                </DialogDescription>
+              </div>
+            ) : (
+              <DialogDescription>
+                Capture admissions, class mapping, contact details, and fee setup in a guided flow.
+              </DialogDescription>
+            )}
+          </DialogHeader>
+        </div>
         <Form {...form}>
-          <form className="space-y-4" onSubmit={handleFormSubmit}>
-            {!isEditing ? (
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-md border p-3">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Step 1</p>
-                  <p className="mt-1 font-medium">Setup</p>
-                  <p className="text-sm text-muted-foreground">Institution, year, class, and admission number.</p>
-                </div>
-                <div className="rounded-md border p-3">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Step 2</p>
-                  <p className="mt-1 font-medium">Student details</p>
-                  <p className="text-sm text-muted-foreground">Personal, contact, and identity details.</p>
-                </div>
-                <div className="rounded-md border p-3">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Step 3</p>
-                  <p className="mt-1 font-medium">Fee setup</p>
-                  <p className="text-sm text-muted-foreground">Load or adjust fee rows before saving.</p>
+          <form className="flex min-h-0 flex-col bg-slate-50" onSubmit={handleFormSubmit}>
+            {isEditing ? (
+              <div className="border-b border-slate-100 bg-white px-3 py-2.5 sm:px-6 sm:py-3">
+                <div className="flex rounded-xl bg-slate-100 p-1 sm:mx-auto sm:max-w-sm">
+                  {[
+                    { id: "details", icon: UserRound, label: "Student Details" },
+                    { id: "fees", icon: IndianRupee, label: "Fees" }
+                  ].map((tab) => {
+                    const Icon = tab.icon;
+
+                    return (
+                      <button
+                        className={cn(
+                          "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-slate-600 transition sm:text-sm",
+                          editTab === tab.id && "bg-white text-sky-700 shadow-sm",
+                          tab.id === "fees" && editTab === tab.id && "text-emerald-700"
+                        )}
+                        key={tab.id}
+                        onClick={() => setEditTab(tab.id)}
+                        type="button"
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {tab.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="border-b border-slate-100 bg-white px-3 py-3 sm:px-6">
+                <div className="mx-auto flex max-w-md items-start">
+                  {createSteps.map((step, index) => {
+                    const isActive = step.id === wizardStep;
+                    const isComplete = index < activeCreateStepIndex;
 
-            {(isEditing || wizardStep === "setup") ? (
-              <Card>
-                <CardContent className="grid gap-4 p-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
+                    return (
+                      <div
+                        className={cn("flex items-start", index < createSteps.length - 1 ? "flex-1" : "shrink-0")}
+                        key={step.id}
+                      >
+                        <div className="flex min-w-14 flex-col items-center text-center">
+                          <span
+                            className={cn(
+                              "flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold",
+                              isActive && "border-sky-600 bg-sky-600 text-white",
+                              isComplete && "border-emerald-500 bg-emerald-500 text-white",
+                              !isActive && !isComplete && "border-slate-200 bg-slate-50 text-slate-400"
+                            )}
+                          >
+                            {index + 1}
+                          </span>
+                          <p className={cn("mt-1 text-[11px] font-medium text-slate-400", (isActive || isComplete) && "text-slate-800")}>
+                            {step.label}
+                          </p>
+                          <p className="hidden text-[10px] text-slate-400 sm:block">{step.hint}</p>
+                        </div>
+                        {index < createSteps.length - 1 ? (
+                          <span className={cn("mx-2 mt-3.5 h-px flex-1 bg-slate-200", isComplete && "bg-emerald-400")} />
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <div className="min-h-0 space-y-3 overflow-y-auto p-3 sm:space-y-4 sm:p-5">
+            {((isEditing && editTab === "details") || (!isEditing && wizardStep === "setup")) ? (
+              <Card className="border-0 shadow-sm">
+                <CardContent className={cn("grid p-3 sm:grid-cols-2 sm:gap-4 sm:p-4", isEditing ? "grid-cols-2 gap-2.5" : "grid-cols-1 gap-3")}>
+                  <div className={isEditing ? "col-span-2" : "sm:col-span-2"}>
                     <p className="text-sm font-semibold">Student setup</p>
                     <p className="text-xs text-muted-foreground">
                       Start with the institution, academic year, and class assignment.
@@ -687,7 +831,7 @@ export function StudentFormDialog({
                     control={form.control}
                     name="institutionId"
                     render={({ field, fieldState }) => (
-                      <FormItem>
+                      <FormItem className={isEditing ? "col-span-2" : "sm:col-span-2"}>
                         <FormLabel>Institution</FormLabel>
                         <FormControl>
                           <Select {...field}>
@@ -706,7 +850,7 @@ export function StudentFormDialog({
                     control={form.control}
                     name="academicYear"
                     render={({ field, fieldState }) => (
-                      <FormItem>
+                      <FormItem className="min-w-0">
                         <FormLabel>Academic Year</FormLabel>
                         <FormControl>
                           <Select {...field}>
@@ -726,7 +870,7 @@ export function StudentFormDialog({
                     control={form.control}
                     name="classId"
                     render={({ field, fieldState }) => (
-                      <FormItem>
+                      <FormItem className="min-w-0">
                         <FormLabel>Class</FormLabel>
                         <FormControl>
                           <Select {...field} disabled={!selectedAcademicYear}>
@@ -739,12 +883,12 @@ export function StudentFormDialog({
                           </Select>
                         </FormControl>
                         {!selectedAcademicYear ? (
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             Select academic year first to view classes.
                           </p>
                         ) : null}
                         {institutionClasses.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             No classes found for the selected academic year.
                           </p>
                         ) : null}
@@ -756,7 +900,7 @@ export function StudentFormDialog({
                     control={form.control}
                     name="admissionNumber"
                     render={({ field, fieldState }) => (
-                      <FormItem>
+                      <FormItem className={isEditing ? "col-span-2 md:col-span-1" : "sm:col-span-2 md:col-span-1"}>
                         <FormLabel>Admission Number</FormLabel>
                         <FormControl>
                           <Input {...field} placeholder="ADM-2026-001" />
@@ -769,10 +913,10 @@ export function StudentFormDialog({
               </Card>
             ) : null}
 
-            {(isEditing || wizardStep === "details") ? (
-              <Card>
-                <CardContent className="grid gap-4 p-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
+            {((isEditing && editTab === "details") || (!isEditing && wizardStep === "details")) ? (
+              <Card className="border-0 shadow-sm">
+                <CardContent className={cn("grid p-3 sm:gap-4 sm:p-4", isEditing ? "grid-cols-2 gap-2.5" : "grid-cols-1 gap-3 min-[390px]:grid-cols-2")}>
+                  <div className={isEditing ? "col-span-2" : "min-[390px]:col-span-2"}>
                     <p className="text-sm font-semibold">Student details</p>
                     <p className="text-xs text-muted-foreground">
                       Capture the student profile and contact information.
@@ -796,7 +940,14 @@ export function StudentFormDialog({
                       key={name}
                       name={name}
                       render={({ field, fieldState }) => (
-                        <FormItem className={name === "course" ? "md:col-span-2" : ""}>
+                        <FormItem
+                          className={cn(
+                            "min-w-0",
+                            isEditing && (name === "email" || name === "aadhaarNumber" || name === "course") && "col-span-2",
+                            !isEditing && !["category", "gender"].includes(name) && "min-[390px]:col-span-2 sm:col-span-1",
+                            !isEditing && (name === "email" || name === "aadhaarNumber" || name === "course") && "sm:col-span-2"
+                          )}
+                        >
                           <FormLabel>{label}</FormLabel>
                           <FormControl>
                             {name === "category" ? (
@@ -832,7 +983,7 @@ export function StudentFormDialog({
                     control={form.control}
                     name="address"
                     render={({ field, fieldState }) => (
-                      <FormItem className="md:col-span-2">
+                      <FormItem className={isEditing ? "col-span-2" : "min-[390px]:col-span-2"}>
                         <FormLabel>Address</FormLabel>
                         <FormControl>
                           <Textarea {...field} placeholder="Student residential address" />
@@ -845,10 +996,10 @@ export function StudentFormDialog({
               </Card>
             ) : null}
 
-            {(isEditing || wizardStep === "fees") ? (
-              <div className="space-y-3 rounded-md border p-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+            {((isEditing && editTab === "fees") || (!isEditing && wizardStep === "fees")) ? (
+              <div className="space-y-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold">Student Fee Structure</p>
                     <p className="text-xs text-muted-foreground">
                       {isEditing
@@ -856,8 +1007,9 @@ export function StudentFormDialog({
                         : "Select the fee cards that apply to this student. The total updates automatically."}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
                     <Button
+                      className="h-8 w-full px-2.5 text-xs sm:h-10 sm:w-auto sm:px-4 sm:text-sm"
                       disabled={classFeeStructures.length === 0}
                       onClick={selectAllFeeStructures}
                       type="button"
@@ -866,6 +1018,7 @@ export function StudentFormDialog({
                       Select All
                     </Button>
                     <Button
+                      className="h-8 w-full px-2.5 text-xs sm:h-10 sm:w-auto sm:px-4 sm:text-sm"
                       disabled={selectedFeeStructureIds.length === 0}
                       onClick={clearFeeStructureSelection}
                       type="button"
@@ -876,18 +1029,18 @@ export function StudentFormDialog({
                   </div>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-lg border bg-muted/20 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Selected Fees</p>
-                    <p className="mt-2 text-2xl font-semibold">{selectedFeeStructureIds.length}</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
+                  <div className="rounded-lg border bg-muted/20 p-2.5 sm:p-4">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">Selected</p>
+                    <p className="mt-1 text-lg font-semibold sm:mt-2 sm:text-2xl">{selectedFeeStructureIds.length}</p>
                   </div>
-                  <div className="rounded-lg border bg-muted/20 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Billed</p>
-                    <p className="mt-2 text-2xl font-semibold">Rs. {selectedFeeTotal.toFixed(2)}</p>
+                  <div className="order-first col-span-2 min-w-0 rounded-lg border bg-emerald-50 p-2.5 sm:order-none sm:col-span-1 sm:p-4">
+                    <p className="text-[10px] uppercase tracking-wide text-emerald-700 sm:text-xs">Total</p>
+                    <p className="mt-1 break-words text-sm font-semibold text-emerald-800 sm:mt-2 sm:text-2xl">Rs. {selectedFeeTotal.toFixed(2)}</p>
                   </div>
-                  <div className="rounded-lg border bg-muted/20 p-4">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Class Fees</p>
-                    <p className="mt-2 text-2xl font-semibold">{classFeeStructures.length}</p>
+                  <div className="rounded-lg border bg-muted/20 p-2.5 sm:p-4">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">Class Fees</p>
+                    <p className="mt-1 text-lg font-semibold sm:mt-2 sm:text-2xl">{classFeeStructures.length}</p>
                   </div>
                 </div>
 
@@ -901,13 +1054,13 @@ export function StudentFormDialog({
                   </p>
                 ) : null}
 
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
                   {classFeeStructures.map((structure) => {
                     const isSelected = selectedFeeStructureIds.includes(structure.id);
 
                     return (
                       <button
-                        className={`rounded-xl border p-4 text-left transition-all ${
+                        className={`min-w-0 rounded-xl border p-2.5 text-left transition-all sm:p-3 ${
                           isSelected
                             ? "border-emerald-400 bg-emerald-50 shadow-sm"
                             : "border-slate-200 bg-card hover:border-sky-300 hover:shadow-sm"
@@ -916,29 +1069,29 @@ export function StudentFormDialog({
                         onClick={() => toggleFeeStructureSelection(structure.id)}
                         type="button"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="space-y-1">
-                            <p className="font-medium">{structure.name || "Untitled fee"}</p>
-                            <p className="text-sm text-muted-foreground">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 space-y-1">
+                            <p className="break-words text-sm font-medium leading-tight">{structure.name || "Untitled fee"}</p>
+                            <p className="text-xs leading-snug text-muted-foreground">
                               {structure.notes || getSessionSpanLabel(structure, selectedAcademicYear)}
                             </p>
                           </div>
-                          <div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                            {isSelected ? "Selected" : "Tap to select"}
-                          </div>
+                          <span
+                            aria-label={isSelected ? "Selected" : "Not selected"}
+                            className={`mt-0.5 h-4 w-4 shrink-0 rounded-full border ${
+                              isSelected ? "border-emerald-500 bg-emerald-500 ring-2 ring-emerald-100" : "border-slate-300 bg-white"
+                            }`}
+                          />
                         </div>
-                        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-                          <span className="rounded-full bg-muted px-2 py-1">
+                        <div className="mt-2.5 flex flex-wrap items-center gap-1 text-[11px]">
+                          <span className="rounded-full bg-muted px-1.5 py-0.5">
                             Rs. {Number(structure.amount || 0).toFixed(2)}
                             {structure.frequency === "MONTHLY" ? " / month" : ""}
                           </span>
-                          <span className="rounded-full bg-muted px-2 py-1">
-                            {structure.frequency === "MONTHLY" ? "Monthly" : "One-time"}
-                          </span>
-                          <span className="rounded-full bg-muted px-2 py-1">
+                          <span className="rounded-full bg-muted px-1.5 py-0.5">
                             {getSessionSpanLabel(structure, selectedAcademicYear)}
                           </span>
-                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-900">
+                          <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-emerald-900">
                             Total Rs. {getFeeStructureBilledTotal(structure).toFixed(2)}
                           </span>
                         </div>
@@ -949,14 +1102,14 @@ export function StudentFormDialog({
 
                 {isEditing ? (
                   <div className="space-y-3 rounded-xl border bg-muted/10 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
+                    <div className="flex flex-col gap-3 min-[390px]:flex-row min-[390px]:items-center min-[390px]:justify-between">
+                      <div className="min-w-0">
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">Custom fee items</p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="hidden text-sm text-muted-foreground sm:block">
                           Add or adjust manual fee rows that are not linked to class fee structures.
                         </p>
                       </div>
-                      <AnimatedAddButton onClick={addFeeItem} type="button">
+                      <AnimatedAddButton className="h-8 w-full px-2 text-xs min-[390px]:w-auto sm:h-10 sm:px-4 sm:text-sm" onClick={addFeeItem} type="button">
                         Add Custom Fee
                       </AnimatedAddButton>
                     </div>
@@ -966,11 +1119,11 @@ export function StudentFormDialog({
                       </p>
                     ) : null}
                     {customFeeItemEntries.map(({ item, index }) => (
-                      <div className="rounded-xl border bg-card p-4 shadow-sm" key={item.feeInvoiceId || `fee-item-${index}`}>
+                      <div className="rounded-xl border bg-card p-3 shadow-sm sm:p-4" key={item.feeInvoiceId || `fee-item-${index}`}>
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div className="space-y-1">
                             <p className="font-medium">{item.name || "Untitled fee"}</p>
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-xs text-muted-foreground sm:text-sm">
                               {item.frequency === "MONTHLY"
                                 ? getSessionSpanLabel(
                                     classFeeStructureById.get(item.feeStructureId) || item,
@@ -989,8 +1142,8 @@ export function StudentFormDialog({
                           </div>
                         </div>
 
-                        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-                          <div className="space-y-1 xl:col-span-2">
+                        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:mt-4 sm:gap-3 md:grid-cols-2 xl:grid-cols-6">
+                          <div className="col-span-2 space-y-1 xl:col-span-2">
                             <p className="text-xs font-medium text-muted-foreground">Fee Head</p>
                             <Input
                               list={`fee-head-options-${index}`}
@@ -1005,7 +1158,7 @@ export function StudentFormDialog({
                             </datalist>
                           </div>
 
-                          <div className="space-y-1">
+                          <div className="min-w-0 space-y-1">
                             <p className="text-xs font-medium text-muted-foreground">Amount</p>
                             <Input
                               min="1"
@@ -1015,7 +1168,7 @@ export function StudentFormDialog({
                             />
                           </div>
 
-                          <div className="space-y-1">
+                          <div className="min-w-0 space-y-1">
                             <p className="text-xs font-medium text-muted-foreground">Frequency</p>
                             <Select
                               onChange={(event) => updateFeeItem(index, "frequency", event.target.value)}
@@ -1028,7 +1181,7 @@ export function StudentFormDialog({
 
                           {item.frequency === "MONTHLY" ? (
                             <>
-                              <div className="space-y-1">
+                              <div className="min-w-0 space-y-1">
                                 <p className="text-xs font-medium text-muted-foreground">Month</p>
                                 <Select
                                   onChange={(event) => updateFeeItem(index, "monthNumber", event.target.value)}
@@ -1039,7 +1192,7 @@ export function StudentFormDialog({
                                   ))}
                                 </Select>
                               </div>
-                              <div className="space-y-1">
+                              <div className="min-w-0 space-y-1">
                                 <p className="text-xs font-medium text-muted-foreground">Year</p>
                                 <Input
                                   min="2000"
@@ -1050,7 +1203,7 @@ export function StudentFormDialog({
                               </div>
                             </>
                           ) : (
-                            <div className="space-y-1 md:col-span-2">
+                            <div className="col-span-2 space-y-1 md:col-span-2">
                               <p className="text-xs font-medium text-muted-foreground">Due Date</p>
                               <Input
                                 onChange={(event) => updateFeeItem(index, "dueDate", event.target.value)}
@@ -1060,7 +1213,7 @@ export function StudentFormDialog({
                             </div>
                           )}
 
-                          <div className="space-y-1 md:col-span-5">
+                          <div className="col-span-2 space-y-1 md:col-span-2 xl:col-span-5">
                             <p className="text-xs font-medium text-muted-foreground">Notes (optional)</p>
                             <Input
                               onChange={(event) => updateFeeItem(index, "notes", event.target.value)}
@@ -1069,8 +1222,15 @@ export function StudentFormDialog({
                             />
                           </div>
 
-                          <div className="flex items-end">
-                            <Button onClick={() => removeFeeItem(index)} type="button" variant="outline">
+                          <div className="col-span-2 flex justify-end xl:col-span-1 xl:items-end">
+                            <Button
+                              aria-label={`Remove ${item.name || "custom fee"}`}
+                              className="h-8 gap-1.5 border-red-100 bg-red-50 px-2.5 text-xs text-red-600 hover:bg-red-100"
+                              onClick={() => removeFeeItem(index)}
+                              type="button"
+                              variant="outline"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
                               Remove
                             </Button>
                           </div>
@@ -1082,28 +1242,41 @@ export function StudentFormDialog({
               </div>
             ) : null}
 
-            <DialogFooter className="flex flex-wrap items-center justify-between gap-2">
+            </div>
+            <DialogFooter className="shrink-0 border-t border-slate-100 bg-white p-3 sm:p-4">
               {!isEditing ? (
-                <div className="flex gap-2">
-                  <Button disabled={wizardStep === "setup"} onClick={goToPreviousStep} type="button" variant="outline">
+                <div
+                  className={cn(
+                    "w-full gap-2",
+                    wizardStep === "fees"
+                      ? "flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between"
+                      : "grid grid-cols-2 sm:flex sm:items-center sm:justify-between"
+                  )}
+                >
+                  <Button className="w-full sm:w-auto" disabled={wizardStep === "setup"} onClick={goToPreviousStep} type="button" variant="outline">
                     Back
                   </Button>
                   {wizardStep !== "fees" ? (
-                    <Button onClick={goToNextStep} type="button">
+                    <Button className="w-full sm:w-auto" onClick={goToNextStep} type="button">
                       Next
                     </Button>
-                  ) : null}
+                  ) : (
+                    <Button className="w-full sm:ml-auto sm:w-auto" type="submit" disabled={form.formState.isSubmitting || waitingForCreateFees}>
+                      {form.formState.isSubmitting
+                        ? "Saving..."
+                        : waitingForCreateFees
+                          ? "Loading Fee Structures..."
+                        : `Confirm & Save Student${selectedFeeStructureIds.length ? ` (Rs. ${selectedFeeTotal.toFixed(2)})` : ""}`}
+                    </Button>
+                  )}
                 </div>
-              ) : null}
-              {isEditing || wizardStep === "fees" ? (
-                <Button type="submit" disabled={form.formState.isSubmitting}>
+              ) : (
+                <Button className="w-full sm:ml-auto sm:w-auto" type="submit" disabled={form.formState.isSubmitting}>
                   {form.formState.isSubmitting
                     ? "Saving..."
-                    : isEditing
-                      ? `Save Student${selectedFeeStructureIds.length ? ` (Rs. ${selectedFeeTotal.toFixed(2)})` : ""}`
-                      : `Confirm & Save Student${selectedFeeStructureIds.length ? ` (Rs. ${selectedFeeTotal.toFixed(2)})` : ""}`}
+                    : `Save Student${selectedFeeStructureIds.length ? ` (Rs. ${selectedFeeTotal.toFixed(2)})` : ""}`}
                 </Button>
-              ) : null}
+              )}
             </DialogFooter>
           </form>
         </Form>

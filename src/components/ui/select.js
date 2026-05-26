@@ -6,64 +6,93 @@ import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
 import { cn } from "../../lib/utils.js";
 
-function hasNativeOptions(children) {
+const EMPTY_OPTION_VALUE = "__radix_select_empty_option__";
+
+function hasLegacyOptions(children) {
   return React.Children.toArray(children).some(
     (child) => React.isValidElement(child) && child.type === "option"
   );
 }
 
-const NativeSelect = React.forwardRef(
-  ({ className, children, onChange, value, defaultValue, ...props }, ref) => {
-    return (
-      <div className="relative w-full">
-        <select
-          ref={ref}
-          className={cn(
-            "flex h-12 w-full appearance-none items-center rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm font-medium text-slate-700 shadow-sm transition-all duration-200",
-            "hover:bg-slate-50",
-            "focus:border-blue-300 focus:outline-none focus:ring-4 focus:ring-blue-100",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-            className
-          )}
-          value={value}
-          defaultValue={defaultValue}
-          onChange={onChange}
-          {...props}
-        >
-          {children}
-        </select>
-
-        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-      </div>
-    );
-  }
-);
-
-NativeSelect.displayName = "NativeSelect";
-
 const Select = React.forwardRef(
-  ({ children, onChange, className, value, defaultValue, ...props }, ref) => {
-    const isNativeMode = hasNativeOptions(children) || typeof onChange === "function";
+  (
+    {
+      children,
+      onChange,
+      onValueChange,
+      onBlur,
+      className,
+      value,
+      defaultValue,
+      name,
+      required,
+      disabled,
+      ...props
+    },
+    ref
+  ) => {
+    const isLegacyMode = hasLegacyOptions(children) || typeof onChange === "function";
 
-    if (isNativeMode) {
+    if (isLegacyMode) {
+      const mapValue = (nextValue) =>
+        nextValue === "" ? EMPTY_OPTION_VALUE : nextValue;
+      const handleValueChange = (nextValue) => {
+        const nextFormValue =
+          nextValue === EMPTY_OPTION_VALUE ? "" : nextValue;
+
+        onValueChange?.(nextFormValue);
+        onChange?.({
+          target: { name, value: nextFormValue },
+          currentTarget: { name, value: nextFormValue },
+        });
+      };
+
       return (
-        <NativeSelect
-          ref={ref}
-          className={className}
-          value={value}
-          defaultValue={defaultValue}
-          onChange={onChange}
-          {...props}
+        <SelectPrimitive.Root
+          defaultValue={mapValue(defaultValue)}
+          disabled={disabled}
+          name={name}
+          onValueChange={handleValueChange}
+          required={required}
+          value={mapValue(value)}
         >
-          {children}
-        </NativeSelect>
+          <SelectTrigger
+            ref={ref}
+            className={className}
+            onBlur={onBlur}
+            {...props}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {React.Children.toArray(children).map((child) => {
+              if (!React.isValidElement(child) || child.type !== "option") {
+                return child;
+              }
+
+              return (
+                <SelectItem
+                  disabled={child.props.disabled}
+                  key={child.key ?? child.props.value}
+                  value={mapValue(child.props.value)}
+                >
+                  {child.props.children}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </SelectPrimitive.Root>
       );
     }
 
     return (
       <SelectPrimitive.Root
-        value={value}
         defaultValue={defaultValue}
+        disabled={disabled}
+        name={name}
+        onValueChange={onValueChange}
+        required={required}
+        value={value}
         {...props}
       >
         {children}

@@ -7,9 +7,12 @@ import {
   ArrowUpDown,
   Building2,
   CalendarDays,
+  ChevronDown,
   ChevronRight,
   IndianRupee,
+  Pencil,
   School,
+  Trash2,
   Users
 } from "lucide-react";
 import { toast } from "sonner";
@@ -34,6 +37,7 @@ import {
 import { Input } from "../ui/input.js";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card.js";
 import { can } from "../../lib/permissions.js";
+import { cn } from "../../lib/utils.js";
 
 function getNextAcademicYearLabel(academicYear) {
   const value = String(academicYear || "").trim();
@@ -121,6 +125,8 @@ export function StudentsPageClient({
   const [promotionSubmitting, setPromotionSubmitting] = useState(false);
   const [showClassDetail, setShowClassDetail] = useState(false);
   const [studentsTableLoading, setStudentsTableLoading] = useState(false);
+  const [expandedAcademicYear, setExpandedAcademicYear] = useState(null);
+  const [expandedStudentId, setExpandedStudentId] = useState(null);
   const canManageStudents = can(currentUser, "students.manage");
   const canPromoteStudents = can(currentUser, "students.promote");
   const canReadFees = can(currentUser, "fees.read");
@@ -287,6 +293,14 @@ export function StudentsPageClient({
     return institutionById.get(institutionFilter)?.name || "Selected Institution";
   }, [institutionById, institutionFilter]);
 
+  useEffect(() => {
+    setExpandedAcademicYear((current) =>
+      academicYearGroups.some((group) => group.academicYear === current)
+        ? current
+        : academicYearGroups[0]?.academicYear || null
+    );
+  }, [academicYearGroups]);
+
   const unassignedStudents = useMemo(
     () =>
       students.filter(
@@ -316,6 +330,7 @@ export function StudentsPageClient({
     if (!classFilter) {
       setSelectedStudentIds([]);
     }
+    setExpandedStudentId(null);
   }, [classFilter]);
 
   const selectedClassRecord = useMemo(
@@ -587,6 +602,162 @@ export function StudentsPageClient({
     );
   }
 
+  function renderMobileRosterClassCard(academicClass) {
+    const roster = students.filter((student) => student.classId === academicClass.id);
+    const activeCount = roster.filter((student) => (student.status || "ACTIVE") === "ACTIVE").length;
+    const classInstitutionName =
+      academicClass.institutionName || institutionById.get(academicClass.institutionId)?.name || "Institution";
+
+    return (
+      <Card className="w-[270px] shrink-0 rounded-2xl border-slate-200/80 bg-linear-to-br from-white to-blue-50 shadow-sm" key={academicClass.id}>
+        <CardContent className="space-y-3 p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-base font-semibold text-slate-950">{getClassLabel(academicClass)}</p>
+              {isSuperAdmin ? <p className="mt-0.5 truncate text-xs text-slate-500">{classInstitutionName}</p> : null}
+            </div>
+            <Button
+              aria-label={`Open roster for ${getClassLabel(academicClass)}`}
+              className="h-8 w-8 shrink-0 rounded-xl bg-white p-0 text-sky-700"
+              onClick={() => openClassDetail(academicClass.id)}
+              type="button"
+              variant="outline"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            {[
+              { label: "Active", value: activeCount },
+              { label: "Seats", value: academicClass.capacity || "NA" },
+              { label: "Roster", value: roster.length }
+            ].map((metric) => (
+              <div className="rounded-xl bg-white/70 px-1 py-2" key={metric.label}>
+                <p className="text-[9px] font-medium uppercase text-slate-500">{metric.label}</p>
+                <p className="mt-0.5 text-sm font-semibold text-slate-900">{metric.value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Button className="h-9 flex-1 px-2 text-xs" onClick={() => openClassDetail(academicClass.id)} type="button" variant="outline">
+              Open Roster
+            </Button>
+            {canManageStudents ? (
+              <AnimatedAddButton
+                className="h-9 flex-1 px-2 text-xs"
+                onClick={() => {
+                  setInstitutionFilter(academicClass.institutionId);
+                  setClassFilter(academicClass.id);
+                  setShowClassDetail(true);
+                  setEditingStudent({
+                    institutionId: academicClass.institutionId,
+                    classId: academicClass.id,
+                    academicYear: academicClass.academicYear || ""
+                  });
+                  setDialogOpen(true);
+                }}
+              >
+                Add Student
+              </AnimatedAddButton>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  function renderMobileStudentRow(student) {
+    const studentName = `${student.firstName} ${student.lastName || ""}`.trim();
+    const isExpanded = expandedStudentId === student.id;
+
+    return (
+      <div className="border-b border-slate-100 last:border-b-0" key={student.id}>
+        <div className="flex items-center gap-2.5 px-3 py-3">
+            {canManageStudents ? (
+              <input
+                aria-label={`Select student ${studentName}`}
+                checked={selectedStudentIds.includes(student.id)}
+                className="h-4 w-4 shrink-0"
+                onChange={() => toggleStudentSelection(student.id)}
+                type="checkbox"
+              />
+            ) : null}
+            <button
+              className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
+              onClick={() => setExpandedStudentId(isExpanded ? null : student.id)}
+              type="button"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-slate-950">{studentName}</p>
+                <p className="truncate text-[11px] text-slate-500">
+                  {student.admissionNumber || "No admission number"} | {getStudentClassLabel(student)}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <StatusBadge status={student.status || "ACTIVE"} />
+                <ChevronDown className={cn("h-4 w-4 text-slate-400 transition-transform", isExpanded && "rotate-180")} />
+              </div>
+            </button>
+        </div>
+        {isExpanded ? (
+          <div className="border-t border-slate-100 bg-slate-50/80 px-3 pb-3 pt-2.5">
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <p className="text-[10px] uppercase text-slate-400">Contact</p>
+                <p className="truncate font-medium text-slate-700">{student.phone || student.email || "Not provided"}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase text-slate-400">Category</p>
+                <p className="font-medium text-slate-700">{student.category || "NA"}</p>
+              </div>
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              {canReadFees ? (
+                <Button
+                  aria-label={`View fees for ${studentName}`}
+                  className="h-8 gap-1.5 px-2.5 text-xs text-emerald-700"
+                  onClick={() => {
+                    setFeesStudent(student);
+                    setFeesDialogOpen(true);
+                  }}
+                  type="button"
+                  variant="outline"
+                >
+                  <IndianRupee className="h-3.5 w-3.5" />
+                  Fees
+                </Button>
+              ) : null}
+              {canManageStudents ? (
+                <>
+                  <Button
+                    aria-label={`Edit ${studentName}`}
+                    className="h-8 w-8 rounded-lg p-0 text-sky-700"
+                    onClick={() => {
+                      setEditingStudent(student);
+                      setDialogOpen(true);
+                    }}
+                    type="button"
+                    variant="outline"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <ConfirmDialog
+                    description={`Delete ${studentName} from the student registry?`}
+                    onConfirm={() => handleDelete(student.id)}
+                  >
+                    <Button aria-label={`Delete ${studentName}`} className="h-8 w-8 rounded-lg p-0" type="button" variant="destructive">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </ConfirmDialog>
+                </>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   const columns = [
     {
       id: "select",
@@ -716,8 +887,28 @@ export function StudentsPageClient({
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+    <div className="space-y-4 sm:space-y-6">
+      <Card className="overflow-hidden border-sky-100 bg-linear-to-br from-white via-sky-50 to-indigo-50 shadow-sm md:hidden">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-sky-700">Students</p>
+              <p className="mt-1 text-3xl font-semibold text-slate-950">{students.length}</p>
+            </div>
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-100 text-sky-700">
+              <Users className="h-5 w-5" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-center gap-2 rounded-xl bg-white/70 px-3 py-2 text-xs text-slate-600">
+            <Building2 className="h-3.5 w-3.5 shrink-0 text-violet-600" />
+            <span className="truncate">{visibleInstitutionName}</span>
+            <span className="ml-auto shrink-0 rounded-full bg-slate-100 px-2 py-0.5">
+              {institutionClasses.length} classes
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+      <div className="hidden gap-6 md:grid md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl bg-gradient-to-br from-sky-50 to-indigo-50 p-[1px]">
           <MetricCard icon={Users} label="Total Students" value={students.length} />
         </div>
@@ -735,22 +926,22 @@ export function StudentsPageClient({
       {!showClassDetail ? (
         <div className="space-y-5">
           <Card className="border-slate-200 bg-gradient-to-r from-slate-50 via-white to-sky-50">
-            <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+            <CardContent className="flex flex-col gap-3 p-4 sm:gap-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary sm:text-xs">
                   Student navigation
                 </p>
-                <h2 className="text-xl font-semibold tracking-tight">Browse classes by academic year</h2>
-                <p className="max-w-2xl text-sm text-muted-foreground">
+                <h2 className="text-base font-semibold tracking-tight sm:text-xl">Browse classes by academic year</h2>
+                <p className="hidden max-w-2xl text-sm text-muted-foreground sm:block">
                   Open a class card to manage its roster, add students, or promote the entire batch.
                   {isSuperAdmin ? " Institution names are shown on each class card." : ""}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <div className="rounded-full border bg-white px-3 py-2 text-xs font-medium text-slate-600">
+                <div className="hidden rounded-full border bg-white px-3 py-2 text-xs font-medium text-slate-600 sm:block">
                   {visibleInstitutionName}
                 </div>
-                <div className="rounded-full border bg-white px-3 py-2 text-xs font-medium text-slate-600">
+                <div className="hidden rounded-full border bg-white px-3 py-2 text-xs font-medium text-slate-600 sm:block">
                   {institutionClasses.length} classes
                 </div>
                 <div className="rounded-full border bg-white px-3 py-2 text-xs font-medium text-slate-600">
@@ -760,8 +951,8 @@ export function StudentsPageClient({
             </CardContent>
           </Card>
 
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="w-full max-w-sm">
+          <div className="flex flex-col gap-3 sm:gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="w-full sm:max-w-sm">
               <Select value={institutionFilter} onChange={(event) => setInstitutionFilter(event.target.value)}>
                 <option value="">All Institutions</option>
                 {institutions.map((institution) => (
@@ -773,7 +964,7 @@ export function StudentsPageClient({
             </div>
             {canManageStudents ? (
               <AnimatedAddButton
-                className="shadow-sm"
+                className="w-full shadow-sm sm:w-auto"
                 variant="Addbtn"
                 onClick={() => {
                   setEditingStudent(null);
@@ -786,7 +977,7 @@ export function StudentsPageClient({
           </div>
 
           {academicYearGroups.length > 0 ? (
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="hidden gap-2 overflow-x-auto pb-1 md:flex">
               {academicYearGroups.map((group) => (
                 <a
                   className="shrink-0 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-primary hover:text-primary"
@@ -803,7 +994,40 @@ export function StudentsPageClient({
           ) : null}
 
           {academicYearGroups.length > 0 ? (
-            academicYearGroups.map((group) => (
+            <div className="space-y-3 md:hidden">
+              {academicYearGroups.map((group) => {
+                const isExpanded = expandedAcademicYear === group.academicYear;
+
+                return (
+                  <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" key={group.academicYear}>
+                    <button
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                      onClick={() => setExpandedAcademicYear(isExpanded ? null : group.academicYear)}
+                      type="button"
+                    >
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Academic Year</p>
+                        <p className="mt-0.5 text-sm font-semibold text-slate-950">{group.academicYear}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-sky-50 px-2 py-1 text-[11px] font-medium text-sky-700">{group.classes.length} classes</span>
+                        <ChevronDown className={cn("h-4 w-4 text-slate-500 transition-transform", isExpanded && "rotate-180")} />
+                      </div>
+                    </button>
+                    {isExpanded ? (
+                      <div className="flex gap-3 overflow-x-auto border-t border-slate-100 p-3">
+                        {group.classes.map((academicClass) => renderMobileRosterClassCard(academicClass))}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {academicYearGroups.length > 0 ? (
+            <div className="hidden space-y-5 md:block">
+            {academicYearGroups.map((group) => (
               <section className="space-y-4" id={`year-${String(group.academicYear).replace(/[^a-zA-Z0-9]+/g, "-")}`} key={group.academicYear}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -869,6 +1093,7 @@ export function StudentsPageClient({
                             {canManageStudents ? (
                               <AnimatedAddButton
                                 className="flex-1"
+                                
                                 onClick={() => {
                                   setInstitutionFilter(academicClass.institutionId);
                                   setClassFilter(academicClass.id);
@@ -891,7 +1116,8 @@ export function StudentsPageClient({
                   })}
                 </div>
               </section>
-            ))
+            ))}
+            </div>
           ) : (
             <Card className="border-dashed">
               <CardContent className="p-8 text-center">
@@ -925,11 +1151,11 @@ export function StudentsPageClient({
       ) : null}
 
       {showClassDetail ? (
-        <Card>
-          <CardHeader className="flex flex-col gap-4 border-b border-border/80 md:flex-row md:items-start md:justify-between">
-            <div className="space-y-3">
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-col gap-3 border-b border-border/80 p-4 sm:gap-4 sm:p-6 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-2 sm:space-y-3">
               <Button
-                className="w-fit"
+                className="h-8 w-fit px-2.5 text-xs sm:h-10 sm:px-4 sm:text-sm"
                 onClick={() => {
                   setShowClassDetail(false);
                   setClassFilter("");
@@ -941,10 +1167,10 @@ export function StudentsPageClient({
                 Back To Classes
               </Button>
               <div className="space-y-1">
-                <CardTitle>
+                <CardTitle className="text-base sm:text-xl">
                   {classFilter === "__unassigned__" ? "Unassigned Students" : getClassLabel(selectedClassRecord)}
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-xs sm:text-sm">
                   {classFilter === "__unassigned__"
                     ? "Students waiting to be assigned to a class."
                     : `${selectedClassRecord?.academicYear || "Academic year not set"}${
@@ -953,25 +1179,40 @@ export function StudentsPageClient({
                 </CardDescription>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
               {canManageStudents ? (
-                <Button disabled={!classFilter} onClick={handleSelectCurrentClassStudents} type="button" variant="outline">
-                  Select Class Students
+                <Button className="h-9 px-2 text-xs sm:h-10 sm:px-4 sm:text-sm" disabled={!classFilter} onClick={handleSelectCurrentClassStudents} type="button" variant="outline">
+                  Select All
                 </Button>
               ) : null}
               {canManageStudents ? (
-                <AnimatedAddButton disabled={!institutionFilter} onClick={openCreateStudentForClass}>
-                  Add To This Class
+                <AnimatedAddButton className="h-9 px-2 text-xs sm:h-10 sm:px-4 sm:text-sm" disabled={!institutionFilter} onClick={openCreateStudentForClass}>
+                  Add Student
                 </AnimatedAddButton>
               ) : null}
               {canPromoteStudents ? (
-                <Button disabled={!selectedStudentIds.length} onClick={openPromotionDialog} type="button">
-                  Promote Selected
+                <Button className="col-span-2 h-9 text-xs sm:h-10 sm:text-sm" disabled={!selectedStudentIds.length} onClick={openPromotionDialog} type="button">
+                  Promote Selected {selectedStudentIds.length ? `(${selectedStudentIds.length})` : ""}
                 </Button>
               ) : null}
             </div>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-4">
+          <CardContent className="p-3 md:hidden">
+            <div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-50 p-2">
+              {[
+                { label: "Roster", value: selectedClassStudents.length, tone: "text-rose-700" },
+                { label: "Active", value: selectedClassActiveCount, tone: "text-emerald-700" },
+                { label: "Selected", value: selectedStudentIds.length, tone: "text-amber-700" }
+              ].map((metric) => (
+                <div className="rounded-xl bg-white px-2 py-2 text-center" key={metric.label}>
+                  <p className={cn("text-[10px] font-medium uppercase", metric.tone)}>{metric.label}</p>
+                  <p className="mt-1 text-lg font-semibold text-slate-950">{metric.value}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 truncate px-1 text-[11px] text-slate-500">{visibleInstitutionName}</p>
+          </CardContent>
+          <CardContent className="hidden gap-4 md:grid md:grid-cols-4">
             <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
               <p className="text-xs uppercase tracking-wide text-sky-700">Institution</p>
               <p className="mt-2 font-medium">{visibleInstitutionName}</p>
@@ -993,6 +1234,52 @@ export function StudentsPageClient({
       ) : null}
 
       {showClassDetail ? (
+        <>
+        <div className="space-y-3 md:hidden">
+          {selectedStudentIds.length > 0 ? (
+            <div className="flex gap-2 rounded-2xl border border-amber-100 bg-amber-50 p-2">
+              {canPromoteStudents ? (
+                <Button className="h-9 flex-1 text-xs" onClick={openPromotionDialog} type="button" variant="outline">
+                  Promote ({selectedStudentIds.length})
+                </Button>
+              ) : null}
+              {canManageStudents ? (
+                <ConfirmDialog
+                  description={`Delete ${selectedStudentIds.length} selected student(s)?`}
+                  onConfirm={handleBulkDelete}
+                >
+                  <Button className="h-9 flex-1 text-xs" type="button" variant="destructive">
+                    Delete ({selectedStudentIds.length})
+                  </Button>
+                </ConfirmDialog>
+              ) : null}
+            </div>
+          ) : null}
+          {studentsTableLoading ? (
+            <Card>
+              <CardContent className="p-5 text-center text-sm text-muted-foreground">Loading students...</CardContent>
+            </Card>
+          ) : classWiseStudents.length > 0 ? (
+            <Card className="overflow-hidden rounded-2xl border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-slate-500">
+                {canManageStudents ? <span className="w-4 shrink-0" /> : null}
+                <span className="flex-1">Student / Admission</span>
+                <span>Status</span>
+              </div>
+              {classWiseStudents.map((student) => renderMobileStudentRow(student))}
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-5 text-center">
+                <p className="font-medium">{initialError ? "Unable to load students" : "No students available"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {initialError || "Add a student to begin this roster."}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+        <div className="hidden md:block">
         <DataTable
           title={`Class : ${classFilter === "__unassigned__" ? "Unassigned Students" : getClassLabel(selectedClassRecord)}`}
           columns={columns}
@@ -1031,6 +1318,8 @@ export function StudentsPageClient({
           loading={studentsTableLoading}
           searchPlaceholder="Search by name, admission number, class, or course"
         />
+        </div>
+        </>
       ) : (
         <Card>
           <CardHeader>

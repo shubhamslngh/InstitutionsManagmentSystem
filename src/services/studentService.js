@@ -563,6 +563,7 @@ async function upsertStudentFeeInvoices(student, feeItems, client) {
 export async function createStudent(payload) {
   requireFields(payload, ["institutionId", "firstName", "admissionNumber"]);
   validateStudentPayload(payload);
+  const hasExplicitFeeSelection = payload.selectedFeeStructureIds !== undefined;
   const feeItems = validateFeeItems(payload.feeItems);
   const selectedFeeStructureIds = normalizeSelectedFeeStructureIds(payload.selectedFeeStructureIds);
 
@@ -651,7 +652,7 @@ export async function createStudent(payload) {
           throw error;
         }
       }
-    } else if (payload.classId && feeItems.length === 0) {
+    } else if (payload.classId && feeItems.length === 0 && !hasExplicitFeeSelection) {
       try {
         await assignClassFeesToStudent(
           {
@@ -673,6 +674,8 @@ export async function createStudent(payload) {
 }
 
 export async function updateStudent(studentId, payload) {
+  const shouldUpdateFees =
+    payload.feeItems !== undefined || payload.selectedFeeStructureIds !== undefined;
   const feeItems = validateFeeItems(payload.feeItems);
   const selectedFeeStructureIds = normalizeSelectedFeeStructureIds(payload.selectedFeeStructureIds);
 
@@ -739,7 +742,7 @@ export async function updateStudent(studentId, payload) {
       ]
     );
 
-    if (feeItems.length > 0) {
+    if (shouldUpdateFees && feeItems.length > 0) {
       await upsertStudentFeeInvoices(
         {
           id: studentId,
@@ -750,7 +753,7 @@ export async function updateStudent(studentId, payload) {
       );
     }
 
-    if (nextClassId && selectedFeeStructureIds.length > 0) {
+    if (shouldUpdateFees && nextClassId && selectedFeeStructureIds.length > 0) {
       try {
         await assignClassFeesToStudent(
           {
@@ -767,7 +770,12 @@ export async function updateStudent(studentId, payload) {
           throw error;
         }
       }
-    } else if (nextClassId && feeItems.length === 0) {
+    } else if (
+      shouldUpdateFees &&
+      nextClassId &&
+      feeItems.length === 0 &&
+      payload.selectedFeeStructureIds === undefined
+    ) {
       try {
         await assignClassFeesToStudent(
           {
