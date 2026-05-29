@@ -146,7 +146,7 @@ export function OverviewPageClient({ snapshot, userRole }) {
 
   return (
     <div className="space-y-5 pb-3 md:space-y-6">
-      <div className="relative overflow-hidden rounded-[26px] bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-600 px-5 py-5 text-white shadow-[0_18px_45px_rgba(37,99,235,0.24)] md:rounded-none md:bg-none md:p-0 md:text-slate-950 md:shadow-none">
+      <div className="relative overflow-hidden rounded-md bg-linear-to-br from-indigo-700  via-indigo-600 to-indigo-600 px-5 py-5 text-white  md:rounded-none md:bg-none md:p-0 md:text-slate-950 md:shadow-none">
         <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-white/10 md:hidden" />
         <div className="pointer-events-none absolute -bottom-16 right-16 h-28 w-28 rounded-full bg-sky-300/20 md:hidden" />
         <div className="relative flex items-start justify-between gap-3 md:items-center">
@@ -155,7 +155,7 @@ export function OverviewPageClient({ snapshot, userRole }) {
               {isSuperAdmin ? "Global overview" : "Institution overview"}
             </p>
             <h2 className="truncate text-2xl font-semibold tracking-tight md:whitespace-normal">
-              {isSuperAdmin ? "All institutions at a glance" : institutionName}
+              {isSuperAdmin ? "All institutions" : institutionName}
             </h2>
             {!isSuperAdmin ? (
               <p className="text-sm text-blue-100 md:text-muted-foreground">
@@ -177,7 +177,7 @@ export function OverviewPageClient({ snapshot, userRole }) {
               {nextStep ? "Up next" : "Status"}
             </p>
             <p className="mt-1 text-sm font-semibold">
-              {nextStep ? nextStep.title : "Setup complete"}
+              {nextStep ? nextStep.title : "Setup completed"}
             </p>
           </div>
           <Button

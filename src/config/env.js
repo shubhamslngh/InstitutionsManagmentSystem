@@ -53,5 +53,6 @@ export const env = {
   databaseUser: process.env.DB_USER || "",
   databasePassword: process.env.DB_PASSWORD || "",
   databaseSsl: getBoolean(process.env.DB_SSL, false),
+  databaseConnectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 3),
   databaseUrl: requireEnv("DATABASE_URL", buildDatabaseUrl())
 };

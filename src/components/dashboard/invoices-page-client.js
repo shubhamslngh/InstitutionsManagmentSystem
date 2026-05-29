@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, Eye, Printer, ReceiptText } from "lucide-react";
+import { ArrowUpDown, ChevronDown, Eye, Printer, ReceiptText } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button.js";
 import { AnimatedAddButton } from "../ui/animated-add-button.js";
@@ -317,7 +317,7 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 md:gap-6">
         <MetricCard icon={ReceiptText} label="Invoice Gross" value={formatCurrency(totals.gross)} />
         <MetricCard icon={ReceiptText} label="Invoice Net" value={formatCurrency(totals.net)} tone="success" />
         <MetricCard icon={ReceiptText} label="Open Balance" value={formatCurrency(totals.balance)} tone="danger" />
@@ -341,7 +341,120 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
         contentClassName="bg-white"
         tableWrapperClassName="max-h-[500px] overflow-auto"
         footerClassName="px-4 py-3"
-          actions={
+        mobileRow={({ row, isExpanded, toggleExpanded }) => {
+          const invoice = row.original;
+          const student = students.find((item) => item.id === invoice.studentId);
+          const institution = institutions.find((item) => item.id === invoice.institutionId);
+          const studentName = `${student?.firstName || "Unknown"} ${student?.lastName || ""}`.trim();
+
+          return (
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="pt-1">
+                  <input
+                    aria-label={`Select invoice ${invoice.title}`}
+                    checked={selectedInvoiceIds.includes(invoice.id)}
+                    onChange={() => toggleInvoiceSelection(invoice.id)}
+                    type="checkbox"
+                  />
+                </div>
+                <button
+                  className="min-w-0 flex-1 text-left"
+                  onClick={toggleExpanded}
+                  type="button"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-950">{invoice.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">{studentName}</p>
+                    </div>
+                    <ChevronDown
+                      className={`mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                    />
+                  </div>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-[1fr_auto] items-center gap-3 pl-7">
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Balance</p>
+                  <p className="truncate text-base font-semibold text-slate-950">{formatCurrency(invoice.balance)}</p>
+                </div>
+                <StatusBadge status={invoice.status} />
+              </div>
+
+              {isExpanded ? (
+                <div className="space-y-3 rounded-md bg-muted/30 p-3 text-sm">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Receipt</p>
+                      <p className="font-medium">{invoice.receiptNumber || "NA"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Due Date</p>
+                      <p className="font-medium">{formatDate(invoice.dueDate)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Net</p>
+                      <p className="font-medium">{formatCurrency(invoice.netAmount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Paid</p>
+                      <p className="font-medium">{formatCurrency(invoice.totalPaid)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Gross</p>
+                      <p className="font-medium">{formatCurrency(invoice.grossAmount)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Discount</p>
+                      <p className="font-medium">{formatCurrency(invoice.discountAmount)}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Institution</p>
+                    <p className="font-medium">{institution?.name || "NA"}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openReceiptPreview(invoice)}
+                      type="button"
+                    >
+                      <Eye className="h-4 w-4" />
+                      Receipt
+                    </Button>
+                    {canManageFees ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingInvoice(invoice);
+                            setDialogOpen(true);
+                          }}
+                          type="button"
+                        >
+                          Edit
+                        </Button>
+                        <ConfirmDialog
+                          description={`Delete invoice ${invoice.title}?`}
+                          onConfirm={() => handleDelete(invoice.id)}
+                        >
+                          <Button size="sm" type="button" variant="destructive">
+                            Delete
+                          </Button>
+                        </ConfirmDialog>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        }}
+        actions={
           canManageFees && selectedInvoiceIds.length > 0 ? (
             <ConfirmDialog
               description={`Delete ${selectedInvoiceIds.length} selected invoice(s)?`}
@@ -383,8 +496,8 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
           }
         }}
       >
-        <DialogContent className="max-w-6xl">
-          <DialogHeader>
+        <DialogContent className="grid h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] max-w-6xl grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-3 sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:gap-4 sm:p-6">
+          <DialogHeader className="pr-8">
             <DialogTitle>Fee Receipt Preview</DialogTitle>
             <DialogDescription>
               Review the latest combined office and student receipt before printing.
@@ -392,19 +505,19 @@ export function InvoicesPageClient({ initialInvoices, students, institutions, cu
           </DialogHeader>
 
           {receiptLoading ? (
-            <div className="rounded-md border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
+            <div className="flex min-h-64 items-center justify-center rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
               Loading receipt preview...
             </div>
           ) : receiptData ? (
             <ReceiptPreview receipt={receiptData} />
           ) : (
-            <div className="rounded-md border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
+            <div className="flex min-h-64 items-center justify-center rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
               Receipt preview is not available.
             </div>
           )}
 
-          <DialogFooter>
-            <Button disabled={!receiptData || receiptLoading} onClick={printReceipt}>
+          <DialogFooter className="border-t border-border/80 pt-3">
+            <Button className="w-full sm:w-auto" disabled={!receiptData || receiptLoading} onClick={printReceipt}>
               <Printer className="h-4 w-4" />
               Print Combined Receipt
             </Button>

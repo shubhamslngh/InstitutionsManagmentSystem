@@ -45,7 +45,8 @@ export function DataTable({
   contentClassName,
   tableWrapperClassName,
   footerClassName,
-  compact = false
+  compact = false,
+  mobileRow
 }) {
   const [sorting, setSorting] = useState([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -73,6 +74,14 @@ export function DataTable({
     () => table.getAllColumns().filter((column) => column.getCanHide()),
     [table]
   );
+  const [expandedMobileRows, setExpandedMobileRows] = useState({});
+
+  function toggleMobileRow(rowId) {
+    setExpandedMobileRows((current) => ({
+      ...current,
+      [rowId]: !current[rowId]
+    }));
+  }
 
   return (
     <Card className={cn("motion-card", cardClassName)}>
@@ -81,7 +90,7 @@ export function DataTable({
           <CardTitle>{title}</CardTitle>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative min-w-72">
+          <div className="relative w-full sm:min-w-72">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pl-9"
@@ -114,7 +123,34 @@ export function DataTable({
         </div>
       </CardHeader>
       <CardContent className={cn("p-0", contentClassName)}>
-        <div className={cn("max-h-[560px] overflow-auto", tableWrapperClassName)}>
+        {mobileRow ? (
+          <div className="divide-y divide-border md:hidden">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center gap-2 px-4 py-8">
+                <LottieLoader className="h-20 w-20" name="dataTable" />
+                <p className="text-sm font-medium text-muted-foreground">Loading records...</p>
+              </div>
+            ) : table.getRowModel().rows.length > 0 ? (
+              table.getRowModel().rows.map((row) => (
+                <div className="px-3 py-3" key={row.id}>
+                  {mobileRow({
+                    row,
+                    isExpanded: Boolean(expandedMobileRows[row.id]),
+                    toggleExpanded: () => toggleMobileRow(row.id)
+                  })}
+                </div>
+              ))
+            ) : (
+              <div className="px-4 py-12 text-center">
+                <div className="space-y-1">
+                  <p className="font-medium">{emptyTitle}</p>
+                  <p className="text-sm text-muted-foreground">{emptyDescription}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+        <div className={cn("max-h-[560px] overflow-auto", mobileRow && "hidden md:block", tableWrapperClassName)}>
           <Table className={compact ? "text-[13px]" : ""}>
             <TableHeader className="sticky top-0 z-10 bg-card">
               {table.getHeaderGroups().map((headerGroup) => (

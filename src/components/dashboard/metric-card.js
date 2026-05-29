@@ -26,11 +26,12 @@ export function MetricCard({
   hint,
   icon: Icon,
   tone = "default",
+  className,
 }) {
   const style = toneStyles[tone] || toneStyles.default;
 
   return (
-    <Card className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-xl">
+    <Card className={cn("group relative overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-xl sm:rounded-2xl", className)}>
       <div
         className={cn(
           "pointer-events-none absolute inset-0 bg-gradient-to-br via-transparent to-transparent opacity-80",
@@ -40,18 +41,18 @@ export function MetricCard({
 
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
 
-      <CardContent className="relative flex items-start justify-between gap-5 p-6">
-        <div className="min-w-0 space-y-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+      <CardContent className="relative flex items-start justify-between gap-2 p-3 sm:gap-5 sm:p-6">
+        <div className="min-w-0 space-y-1.5 sm:space-y-3">
+          <p className="truncate text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-500 sm:text-[11px] sm:tracking-[0.18em]">
             {label}
           </p>
 
-          <p className="text-3xl font-semibold tracking-tight text-slate-950">
+          <p className="truncate text-base font-semibold tracking-tight text-slate-950 sm:text-3xl">
             {value}
           </p>
 
           {hint ? (
-            <p className="max-w-[220px] text-sm leading-5 text-slate-500">
+            <p className="hidden max-w-[220px] text-sm leading-5 text-slate-500 sm:block">
               {hint}
             </p>
           ) : null}
@@ -60,7 +61,7 @@ export function MetricCard({
         {Icon ? (
           <div
             className={cn(
-              "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-sm transition-transform duration-300 group-hover:scale-105",
+              "hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-sm transition-transform duration-300 group-hover:scale-105 sm:flex",
               style.icon
             )}
           >

@@ -501,9 +501,9 @@ export function ReceiptPreview({ receipt }) {
   const monthLabel = getReceiptMonthLabel(receipt);
 
   const renderCopy = (copyLabel) => (
-    <section className="rounded-md border border-zinc-400 bg-white p-4 text-zinc-900">
+    <section className="rounded-md border border-zinc-400 bg-white p-3 text-zinc-900 sm:p-4">
       <div className="mb-1 text-center text-[11px] font-bold tracking-wide">FEE RECEIPT</div>
-      <div className="text-center text-3xl font-extrabold uppercase leading-tight">{receipt.institution.name || "School Name"}</div>
+      <div className="text-center text-2xl font-extrabold uppercase leading-tight sm:text-3xl">{receipt.institution.name || "School Name"}</div>
       {receipt.institution.address ? <div className="text-center text-xs text-zinc-700">{receipt.institution.address}</div> : null}
       {(receipt.institution.contactPhone || receipt.institution.contactEmail) ? (
         <div className="text-center text-xs text-zinc-700">
@@ -536,7 +536,7 @@ export function ReceiptPreview({ receipt }) {
       </div>
 
       <div className="mt-2 overflow-hidden rounded-sm border border-zinc-400">
-        <table className="min-w-full border-collapse text-sm">
+        <table className="min-w-full border-collapse text-xs sm:text-sm">
           <thead>
             <tr className="bg-zinc-50">
               <th className="w-12 border-r border-zinc-400 px-2 py-1 text-left">Sl.No.</th>
@@ -568,7 +568,7 @@ export function ReceiptPreview({ receipt }) {
       </div>
 
       <div className="mt-2 overflow-hidden rounded-sm border border-zinc-400">
-        <table className="min-w-full border-collapse text-sm">
+        <table className="min-w-full border-collapse text-xs sm:text-sm">
           <thead>
             <tr className="bg-zinc-50">
               <th className="w-12 border-r border-zinc-400 px-2 py-1 text-left">Sl.No.</th>
@@ -612,7 +612,7 @@ export function ReceiptPreview({ receipt }) {
         <div className="rounded border p-2"><span className="font-semibold">Net Due:</span> {netDueParts.rs}.{netDueParts.ps}</div>
       </div>
 
-      <div className="mt-5 flex items-end justify-between gap-8 text-sm">
+      <div className="mt-5 flex items-end justify-between gap-8 text-xs sm:text-sm">
         <div className="w-40 text-center">
           <div className="border-b border-dotted border-zinc-500"></div>
           <div className="mt-1">Date</div>
@@ -626,8 +626,8 @@ export function ReceiptPreview({ receipt }) {
   );
 
   return (
-    <div className="rounded-md border bg-card p-4">
-      <div className="space-y-4">
+    <div className="h-full min-h-0 overflow-auto rounded-md border bg-slate-50 p-2 sm:h-[66vh] sm:p-4">
+      <div className="mx-auto w-[720px] max-w-none space-y-4 sm:w-full">
         {renderCopy("Office Copy")}
         <div className="border-t border-dashed border-zinc-400 pt-2 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
           Tear Here
@@ -1457,8 +1457,8 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
             }
           }}
         >
-          <DialogContent className="max-w-6xl">
-            <DialogHeader>
+          <DialogContent className="grid h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] max-w-6xl grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden p-3 sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:gap-4 sm:p-6">
+            <DialogHeader className="pr-8">
               <DialogTitle>Fee Receipt Preview</DialogTitle>
               <DialogDescription>
                 Office and student copies are arranged on one page with a center tear line. Cutoff date: {receiptCutoffDate || "Today"}.
@@ -1466,22 +1466,22 @@ export function StudentFeesDialog({ open, onOpenChange, student }) {
             </DialogHeader>
 
             {receiptLoading ? (
-              <div className="rounded-md border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
+              <div className="flex min-h-64 items-center justify-center rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
                 Loading receipt preview...
               </div>
             ) : receiptData ? (
               <ReceiptPreview receipt={receiptData} />
             ) : (
-              <div className="rounded-md border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
+              <div className="flex min-h-64 items-center justify-center rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
                 Receipt preview is not available.
               </div>
             )}
 
-            <DialogFooter>
-              <Button disabled={!receiptData || receiptLoading || settlingTillDate} onClick={settleTillCutoffDate} variant="outline">
+            <DialogFooter className="border-t border-border/80 pt-3">
+              <Button className="w-full sm:w-auto" disabled={!receiptData || receiptLoading || settlingTillDate} onClick={settleTillCutoffDate} variant="outline">
                 {settlingTillDate ? "Settling..." : "Settle Till Date"}
               </Button>
-              <Button disabled={!receiptData || receiptLoading} onClick={printReceipt}>
+              <Button className="w-full sm:w-auto" disabled={!receiptData || receiptLoading} onClick={printReceipt}>
                 <Printer className="h-4 w-4" />
                 Print Combined Receipt
               </Button>

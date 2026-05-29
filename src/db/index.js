@@ -2,19 +2,26 @@ import mysql from "mysql2/promise";
 import { env } from "../config/env.js";
 
 const databaseUrl = new URL(env.databaseUrl);
+const globalForDb = globalThis;
 
-export const pool = mysql.createPool({
-  host: databaseUrl.hostname,
-  port: Number(databaseUrl.port || env.databasePort || 3306),
-  user: decodeURIComponent(databaseUrl.username),
-  password: decodeURIComponent(databaseUrl.password),
-  database: databaseUrl.pathname.replace(/^\//, ""),
-  ssl: env.databaseSsl ? {} : undefined,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  multipleStatements: true
-});
+export const pool =
+  globalForDb.mauryaMysqlPool ||
+  mysql.createPool({
+    host: databaseUrl.hostname,
+    port: Number(databaseUrl.port || env.databasePort || 3306),
+    user: decodeURIComponent(databaseUrl.username),
+    password: decodeURIComponent(databaseUrl.password),
+    database: databaseUrl.pathname.replace(/^\//, ""),
+    ssl: env.databaseSsl ? {} : undefined,
+    waitForConnections: true,
+    connectionLimit: env.databaseConnectionLimit,
+    queueLimit: 0,
+    multipleStatements: true
+  });
+
+if (env.nodeEnv !== "production") {
+  globalForDb.mauryaMysqlPool = pool;
+}
 
 function normalizeQuery(text) {
   return text.replace(/\bTRUE\b/g, "TRUE").replace(/\bFALSE\b/g, "FALSE");

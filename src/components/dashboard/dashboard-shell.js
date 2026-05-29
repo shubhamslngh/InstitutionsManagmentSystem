@@ -357,7 +357,7 @@ export function DashboardShell({ children, institutions = [], currentUser }) {
                       "relative flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition-all duration-300",
                       "text-slate-600 hover:-translate-y-0.5 hover:bg-slate-100 hover:text-slate-950 active:translate-y-0",
                       active &&
-                      "border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-sm before:absolute before:bottom-2 before:left-0 before:top-2 before:w-1 before:rounded-r-full before:bg-blue-600",
+                      "border border-blue-100 bg-grawdient-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-sm before:absolute before:bottom-2 before:left-0 before:top-2 before:w-1 before:rounded-r-full before:bg-blue-600",
                       collapsed && "justify-center px-2"
                     )}
                     href={item.href}
@@ -412,7 +412,7 @@ export function DashboardShell({ children, institutions = [], currentUser }) {
                     "relative flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition-all duration-300",
                     "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
                     active &&
-                    "border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-sm before:absolute before:bottom-2 before:left-0 before:top-2 before:w-1 before:rounded-r-full before:bg-blue-600"
+                    "border border-blue-100 bg-linear-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-sm before:absolute before:bottom-2 before:left-0 before:top-2 before:w-1 before:rounded-r-full before:bg-blue-600"
                   )}
                   href={item.href}
                   key={item.href}
